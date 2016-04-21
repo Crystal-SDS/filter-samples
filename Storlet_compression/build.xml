@@ -1,0 +1,27 @@
+<project>
+	
+	<target name="common">
+		<mkdir dir="bin" />
+	</target>
+
+	<target name="compress">
+		<javac srcdir="src/com/urv/storlet/compress/" destdir="bin" includeantruntime="false">
+			<classpath>
+		        <pathelement 
+		        	path="lib/SCommon.jar"/>
+			</classpath>
+		</javac>
+
+	     <jar destfile="bin/compress-1.0.jar" 
+	          basedir="bin"
+	     	  includes="com/urv/storlet/compress/*">
+	     </jar>
+	</target>
+	
+	<target name="clean">
+		<delete dir="bin" />
+	</target>
+	
+	<target name="build" depends="clean, common, compress"/>
+
+</project>
