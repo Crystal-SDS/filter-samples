@@ -27,7 +27,7 @@ import com.ibm.storlet.common.StorletOutputStream;
 public class SSDCacheStorlet implements IStorlet {
 	
 	//TODO: Be aware that the Docker must have access to the SSD device pointed here!
-	private static final String SSD_PATH = "cache/";
+	private static final String SSD_PATH = "/cache/";
 	
 	private static final long CACHE_SIZE = 100*1024*1024;
 	
@@ -103,9 +103,9 @@ public class SSDCacheStorlet implements IStorlet {
 					outputStream.write(buffer, 0, buffer.length);
 				}								
 			}
-			System.out.println("---------------------------------");
-			System.out.println(cacheIndex.toString());
-			System.out.println("---------------------------------");
+			//System.out.println("---------------------------------");
+			//System.out.println(cacheIndex.toString());
+			//System.out.println("---------------------------------");
 			
 		} catch (IOException e) {
 			log.emitLog("Cahing - raised IOException: " + e.getMessage());

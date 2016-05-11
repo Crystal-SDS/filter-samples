@@ -8,7 +8,7 @@
 		<javac srcdir="src/com/urv/storlet/compress/" destdir="bin" includeantruntime="false">
 			<classpath>
 		        <pathelement 
-		        	path="lib/SCommon.jar"/>
+		        	path="../lib/SCommon.jar"/>
 			</classpath>
 		</javac>
 
