@@ -8,11 +8,11 @@
 		<javac srcdir="src/com/urv/storlet/crypto" destdir="bin" includeantruntime="false">
 			<classpath>
 		        <pathelement 
-		        	path="../lib/SCommon.jar"/>
+		        	path="lib/SCommon.jar"/>
 			</classpath>
 		</javac>
 
-	     <jar destfile="bin/cryptostorlet-1.0.jar" 
+	     <jar destfile="bin/crypto-1.0.jar" 
 	          basedir="bin"
 	     	  includes="com/urv/storlet/crypto/*">
 	     </jar>

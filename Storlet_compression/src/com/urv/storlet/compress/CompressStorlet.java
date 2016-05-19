@@ -34,7 +34,7 @@ public class CompressStorlet implements IStorlet {
 			StorletLogger logger) throws StorletException {
 		
 		long before = System.nanoTime();
-		logger.emitLog("----- Init Compression Storlet -----");
+		logger.emitLog("--// Init Compression Storlet //--");
 		StorletInputStream sis = inStreams.get(0);
 		InputStream is = sis.getStream();
 		HashMap<String, String> metadata = sis.getMetadata();

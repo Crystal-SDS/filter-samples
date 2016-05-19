@@ -51,6 +51,7 @@ public class SSDCacheStorlet implements IStorlet {
 		 */
 		StorletInputStream sis = inputStreams.get(0);
 		InputStream is = sis.getStream();
+		InputStream isCached;
 		HashMap<String, String> metadata = sis.getMetadata();
 		
 		StorletObjectOutputStream storletObjectOutputStream = (StorletObjectOutputStream)outputStreams.get(0);
@@ -65,6 +66,8 @@ public class SSDCacheStorlet implements IStorlet {
 			String request = parameters.get("requestType");
 			String objectId = parameters.get("objectId");
 			
+			log.emitLog("Request: " + request);
+			log.emitLog("Object ID: " + objectId);
 			/**
 			 * Write-through cache: A PUT object request is always stored
 			 * at the SSD to ensure that the object copy is updated.
@@ -92,20 +95,26 @@ public class SSDCacheStorlet implements IStorlet {
 					}
 				}
 			}else if (request.equals("GET")){
+				byte[] buffer = new byte[1024*64];
+				int len = 0;
 				List<String> cachedFileId = this.cacheIndex.accessCache("GET", objectId, 0);
+				
 				if (cachedFileId!=null){
+					log.emitLog("Object in cache!");
+					is.close();
 					File cachedFile = new File(SSD_PATH + cachedFileId.get(0));
 					is = new FileInputStream(cachedFile);
 				}
-				byte[] buffer = new byte[1024*64];
-				int len = 0;
-				while((len = is.read(buffer)) != -1) {
-					outputStream.write(buffer, 0, buffer.length);
+
+				while ((len = is.read(buffer)) > 0) {
+					log.emitLog(Integer.toString(len));
+					int a=1;
+					int b=2;
+					
+					
+					//outputStream.write(buffer, 0, buffer.length);
 				}								
 			}
-			//System.out.println("---------------------------------");
-			//System.out.println(cacheIndex.toString());
-			//System.out.println("---------------------------------");
 			
 		} catch (IOException e) {
 			log.emitLog("Cahing - raised IOException: " + e.getMessage());
