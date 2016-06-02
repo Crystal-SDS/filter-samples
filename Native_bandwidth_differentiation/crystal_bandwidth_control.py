@@ -1,6 +1,7 @@
 from threading import Thread
 from eventlet import Timeout
-import itertools
+from swift.common.swob import Request
+from swift.common.swob import Response
 import eventlet
 import select
 import Queue
@@ -14,11 +15,12 @@ import os
 CHUNK_SIZE = 65536            
 '''Check and control the data flow every interval'''
 SAMPLE_CONTROL_INTERVAL = 0.1
-MB = 1000*1000.
+MB = 1024*1024.
 '''Maximum throughout of a single node in the system (Gb Ethernet = 110MB (APPROX))'''
-BW_MAX = 110
+BW_MAX = 120
 
 BEST_CHUNK_READ_TIME = 0.0002
+
 
 class BandwidthThreadControl(Thread):
     
@@ -38,8 +40,7 @@ class BandwidthThreadControl(Thread):
         self.transferred_bytes_control = 0
         '''Number of data flow iterations within control interval'''
         self.number_of_iterations = 0
-        '''Control periodically the enforcement of bw limits'''
-        self.control_process = eventlet.spawn(self.rate_control)
+                 
         '''Bandwidth limit per thread'''
         self.aggregated_bandwidth_limit = BW_MAX  #Minimum BW for non-QoS tenants
         self.bw_limits = dict()
@@ -57,8 +58,12 @@ class BandwidthThreadControl(Thread):
         self.total_sleep_mean = self.calc_sleep
         self.iters_mean = 1
         self.counter = 0
-
         
+        '''Control periodically the enforcement of bw limits'''
+        #self.control_process = eventlet.spawn(self.rate_control)
+        self.control_process = Thread(target=self.rate_control)
+        self.control_process.start()
+
     def add_stream_to_tenant(self, write_pipe, read_pipe, policy, device):
         pipe_tuple = (write_pipe, read_pipe, policy, device)
         self.stream_pipe_queue.put(pipe_tuple)
@@ -96,7 +101,6 @@ class BandwidthThreadControl(Thread):
             self.dynamic_sleep = self.calc_sleep
             self.total_sleep_mean = self.calc_sleep
             self.iters_mean = 1
-            
 
         except KeyError as e:
             print "Non-existing key in limits dict: " + str(e)
@@ -157,13 +161,14 @@ class BandwidthThreadControl(Thread):
             
             f.write("Mean: "+'{0:.6f}'.format(round(self.dynamic_sleep_mean,6))+"\n")
             f.write("Calculated: "+'{0:.6f}'.format(round(self.calc_sleep,6))+"\n")  
-            f.write("Trusted Counter: "+str(self.counter)+"\n")       
-                    
+            f.write("Trusted Counter: "+str(self.counter)+"\n")
             f.close()
+            
             '''Reset counters for new interval calculation'''
             self.transferred_bytes_control = 0
             self.number_of_iterations = 1
             '''Next time to calculate'''
+
             time.sleep(SAMPLE_CONTROL_INTERVAL)
              
             
@@ -174,8 +179,10 @@ class BandwidthThreadControl(Thread):
             except StopIteration:
                 return False
         else:
-            return reader(CHUNK_SIZE)
-
+            try:
+                return reader(CHUNK_SIZE)
+            except StopIteration:
+                return False
 
     def run(self):        
         while self.alive:
@@ -193,7 +200,6 @@ class BandwidthThreadControl(Thread):
                 for token in range(proportional_device_bw):
                     try:
                         chunk = self._read_chunk(reader)
-
                         if chunk:
                             writer.write(chunk)
                             '''Account for the transferred data'''
@@ -276,7 +282,7 @@ class SSYNCBandwidthThreadControl(BandwidthThreadControl):
                     break
                 except Exception as e:
                     request_finished = True
-                    self.log.info("An unknown error occurred during "
+                    self.log.info("PAn unknown error occurred during "
                                   "transfer: " + str(e))
                     break
                     
@@ -286,13 +292,15 @@ class SSYNCBandwidthThreadControl(BandwidthThreadControl):
             except Queue.Empty:
                 self.alive = False
     
-
 class IterLike(object):
     def __init__(self, obj_data, timeout):
         self.closed = False
         self.obj_data = obj_data
         self.timeout = timeout
         self.buf = b''
+
+        self.epoll = select.epoll()
+        self.epoll.register(self.obj_data, select.EPOLLIN | select.EPOLLPRI)
 
     def __iter__(self):
         return self
@@ -311,16 +319,16 @@ class IterLike(object):
 
     def next(self, size=64 * 1024):
         if len(self.buf) < size:
-            r, w, e = select.select([self.obj_data], [], [], self.timeout)
+            r = self.epoll.poll(self.timeout)
+
             if len(r) == 0:
                 self.close()
-
-            if self.obj_data in r:
+            elif self.obj_data in r[0]:
                 self.buf += self.read_with_timeout(size - len(self.buf))
                 if self.buf == b'':
-                    raise StopIteration('Stopped iterator ex')
+                    raise StopIteration('Stopped iterator exp')
             else:
-                raise StopIteration('Stopped iterator ex')
+                raise StopIteration('Stopped iterator exi')
 
         if len(self.buf) > size:
             data = self.buf[:size]
@@ -385,6 +393,8 @@ class IterLike(object):
         if self.closed:
             return
         self.closed = True
+        self.epoll.unregister(self.obj_data)
+        self.epoll.close()
         os.close(self.obj_data)
 
     def __del__(self):
@@ -439,23 +449,39 @@ class Singleton:
 @Singleton
 class BandwidthControl(object):
 
-    def __init__(self, conf, logger):
+    def __init__(self, global_conf, filter_conf, logger):
         self.tenant_request_thread = {}
         self.tenant_response_thread = {}
         self.ssync_thread = {}
         self.producer_monitoring = None
         self.consumer_bw_assignments = None
-        (self.conf) = conf
-        self.log =logger
+        self.global_conf = global_conf
+        self.log = logger
+
+        # TODO: Load form filter_config
+        self.global_conf['rabbit_host'] = 'controller'
+        self.global_conf['rabbit_port'] = 5672
+        self.global_conf['rabbit_username'] = 'openstack'
+        self.global_conf['rabbit_password'] = 'rabbitmqastl1a4b4'
         
-        self.server = self.conf.get('execution_server')
+        self.global_conf['consumer_tag'] = 'bw_assignations'
+        self.global_conf['routing_key_get'] = 'bwdifferentiation.get_bw_info'
+        self.global_conf['routing_key_put'] = 'bwdifferentiation.put_bw_info'
+        self.global_conf['routing_key_ssync'] = 'bwdifferentiation.ssync_bw_info'
+        self.global_conf['exchange_osinfo'] = 'amq.topic'
+        self.global_conf['interval_osinfo'] = 0.2
+        self.global_conf['bandwidth_control'] = 'proxy'
+        self.global_conf['replication_one_per_dev'] = False
+        # ------------------------------------------
         
-        rabbit_host = self.conf.get('rabbit_host')
-        rabbit_port = int(self.conf.get('rabbit_port'))
-        rabbit_user = self.conf.get('rabbit_username')
-        rabbit_pass = self.conf.get('rabbit_password')
+        self.server = self.global_conf.get('execution_server')
         
-        self.ip = self.conf.get('bind_ip')+":"+self.conf.get('bind_port')
+        rabbit_host = self.global_conf.get('rabbit_host')
+        rabbit_port = int(self.global_conf.get('rabbit_port'))
+        rabbit_user = self.global_conf.get('rabbit_username')
+        rabbit_pass = self.global_conf.get('rabbit_password')
+        
+        self.ip = self.global_conf.get('bind_ip')+":"+self.global_conf.get('bind_port')
 
         credentials = pika.PlainCredentials(rabbit_user,rabbit_pass)  
         parameters = pika.ConnectionParameters(host = rabbit_host,
@@ -466,10 +492,24 @@ class BandwidthControl(object):
         self._start_monitoring_producer()
         self._start_assignments_consumer()
 
-    def register_request(self, tenant, request):
+
+    def execute(self, req_resp, app_iter, requets_data):     
+        if isinstance(req_resp, Response):
+            app_iter = self._register_response(requets_data['account'], req_resp, app_iter)
+            
+        elif isinstance(req_resp, Request):
+            app_iter = self._register_request(requets_data['account'], req_resp, app_iter)
+
+        return app_iter
+       
+    def _register_request(self, tenant, request, app_iter = None):
         r, w = os.pipe()
-        write_pipe = os.fdopen(w,'w')   
-        read_pipe = request.environ['wsgi.input'].read
+        write_pipe = os.fdopen(w,'w')
+        
+        if app_iter:
+            read_pipe = app_iter.obj_data
+        else:
+            read_pipe = request.environ['wsgi.input'].read
 
         if self.server=="proxy":
             container = request.environ['PATH_INFO'].rsplit('/',2)[1]
@@ -485,20 +525,29 @@ class BandwidthControl(object):
                           "PUT thread for tenant " + tenant)       
             thr = BandwidthThreadControl(self.log, self.server, 'PUT')
             self.tenant_request_thread[tenant] = thr
+            thr.daemon = True
             thr.start()
         else: thr = self.tenant_request_thread[tenant]
           
         thr.add_stream_to_tenant(write_pipe, read_pipe, policy, device)
-        request.environ['wsgi.input'] = IterLike(r, 10)
+        
+        #request.environ['wsgi.input'] = IterLike(r, 10)
+        return IterLike(r, 10)
+        
     
-    def register_response(self, tenant, response):
+    def _register_response(self, tenant, response, app_iter = None):
         r, w = os.pipe()
         write_pipe = os.fdopen(w,'w')
         
-        if self.server == 'proxy': 
-            read_pipe = iter(itertools.chain(*(response.app_iter.iterables)))
-        else: 
-            read_pipe = response.app_iter._fp.read
+        if app_iter:
+            #fd = app_iter.obj_data
+            #read_pipe = os.fdopen(fd, "r")
+            read_pipe = response.app_iter
+        else:
+            if self.server == 'proxy': 
+                read_pipe = response.app_iter
+            else: 
+                read_pipe = response.app_iter._fp.read
 
         #device = response.headers['device']
         device = "sdb1"
@@ -510,11 +559,13 @@ class BandwidthControl(object):
                           "GET thread for tenant " + tenant)   
             thr = BandwidthThreadControl(self.log, self.server, 'GET')
             self.tenant_response_thread[tenant] = thr
+            thr.daemon = True
             thr.start()
         else: thr = self.tenant_response_thread[tenant]
         
         thr.add_stream_to_tenant(write_pipe, read_pipe, policy, device)
-        response.app_iter = IterLike(r, 10)
+        #response.app_iter = IterLike(r, 10)
+        return IterLike(r, 10)
         
     def register_ssync(self, request):
         r, w = os.pipe()
@@ -526,7 +577,7 @@ class BandwidthControl(object):
         source = request.environ['REMOTE_ADDR']
 
 
-        if self.conf['replication_one_per_dev']:
+        if self.global_conf['replication_one_per_dev']:
             if not self.ssync_thread:
                 thr = SSYNCBandwidthThreadControl(self.log)
                 self.ssync_thread["source:"+source] = thr                                     
@@ -541,6 +592,7 @@ class BandwidthControl(object):
                               " setted to True: rejecting SSYNC /"+device+"/"
                               +partition+" request") 
         else:
+            
             thr = SSYNCBandwidthThreadControl(self.log)
             self.ssync_thread["source:"+source] = thr                                     
             thr.add_stream_to_tenant(write_pipe, ssync_reader, 
@@ -550,35 +602,37 @@ class BandwidthControl(object):
             request.environ['wsgi.input'] = read_pipe
 
         
-    def _start_monitoring_producer(self): 
+    def _start_monitoring_producer(self):
+        self.log.info("SDS Bandwidth Differentiation - Strating monitoring "
+                      "producer")
         channel = self.connection.channel()       
         thbw_get = Thread(target = self.bwinfo_threaded, 
                           name = 'bwinfo_get_threaded',
                           args = ('bwinfo_get_threaded', channel,
-                                  self.conf.get('interval_osinfo'),
-                                  self.conf.get('routing_key_get'),
+                                  self.global_conf.get('interval_osinfo'),
+                                  self.global_conf.get('routing_key_get'),
                                   self.tenant_response_thread,'GET'))
         thbw_get.start()
         
         thbw_put = Thread(target = self.bwinfo_threaded, 
                           name = 'bwinfo_put_threaded',
                           args = ('bwinfo_put_threaded', channel,
-                                  self.conf.get('interval_osinfo'),
-                                  self.conf.get('routing_key_put'),
+                                  self.global_conf.get('interval_osinfo'),
+                                  self.global_conf.get('routing_key_put'),
                                   self.tenant_request_thread,'PUT'))
         thbw_put.start()
         
         thbw_ssync = Thread(target = self.bwinfo_threaded, 
                           name = 'bwinfo_ssync_threaded',
                           args = ('bwinfo_ssync_threaded', channel,
-                                  self.conf.get('interval_osinfo'),
-                                  self.conf.get('routing_key_ssync'),
+                                  self.global_conf.get('interval_osinfo'),
+                                  self.global_conf.get('routing_key_ssync'),
                                   self.ssync_thread,'SSYNC'))
         thbw_ssync.start()          
    
     def bwinfo_threaded(self, name, channel, interval, routing_key, threads, method):
         monitoring_data = dict()
-        exchange = self.conf.get('exchange_osinfo')
+        exchange = self.global_conf.get('exchange_osinfo')
     
         if method == 'SSYNC': 
             get_monitoring_info = self._get_monitoring_info_ssync
@@ -646,7 +700,7 @@ class BandwidthControl(object):
     def _start_assignments_consumer(self):
         self.log.info("SDS Bandwidth Differentiation - Strating object "
                       "storage assignments consumer")
-        consumer_tag = self.conf.get('consumer_tag')
+        consumer_tag = self.global_conf.get('consumer_tag')
         queue_bw = consumer_tag + ":" + self.ip
         routing_key = "#."+self.ip.replace('.','-').replace(':','-') + ".#"
 

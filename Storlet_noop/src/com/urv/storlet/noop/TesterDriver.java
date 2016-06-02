@@ -1,13 +1,3 @@
-/*
-Licensed Materials - Property of IBM
-
-Copyright IBM Corp. 2014, 2014 All Rights Reserved
-
-US Government Users Restricted Rights - Use, duplication or
-disclosure restricted by GSA ADP Schedule Contract with
-IBM Corp.
-*/
-
 package com.urv.storlet.noop;
 
 import java.io.*;
@@ -47,13 +37,8 @@ public class TesterDriver {
 			StorletLogger logger = new StorletLogger(loggerFile.getFD());				
 			Map<String, String> parameters = new HashMap<String, String>();	
 
-			
 			System.out.println("before storlet");
-			
-			
-			
-			
-			
+
 			storlet.invoke(inputStreams, outStreams, parameters, logger);
 			System.out.println("after storlet");
 			
