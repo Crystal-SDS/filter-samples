@@ -49,7 +49,7 @@ class BandwidthThreadControl(Thread):
         self.previous_monitoring_info = dict()
         '''To stop useless threads'''
         self.alive = True
-        
+
         '''Dynamic sleep mean ** EXPERIMENTAL **'''
         max_iterations = int(round(((self.aggregated_bandwidth_limit*SAMPLE_CONTROL_INTERVAL) * MB) / CHUNK_SIZE))
         read_chunk = BEST_CHUNK_READ_TIME * max_iterations
@@ -183,7 +183,15 @@ class BandwidthThreadControl(Thread):
                 return reader(CHUNK_SIZE)
             except StopIteration:
                 return False
-
+            
+    def _write_with_timeout(self, writer, chunk):
+        try:
+            with Timeout(self.timeout):
+                writer.write(chunk)
+        except Timeout:
+            writer.close()
+            raise
+    
     def run(self):        
         while self.alive:
             try:
@@ -200,8 +208,9 @@ class BandwidthThreadControl(Thread):
                 for token in range(proportional_device_bw):
                     try:
                         chunk = self._read_chunk(reader)
-                        if chunk:
-                            writer.write(chunk)
+                        if chunk:                      
+                            self._write_with_timeout(writer, chunk)
+                            
                             '''Account for the transferred data'''
                             self.transferred_bytes_control += len(chunk)
                             self.monitoring_info[policy][device] += len(chunk)
@@ -210,6 +219,8 @@ class BandwidthThreadControl(Thread):
                                on this flow'''
                             time.sleep(max(0,self.dynamic_sleep)) 
                         else:
+                            if hasattr(reader, 'close'):
+                                reader.close()
                             writer.close()
                             request_finished = True
                             break
@@ -291,7 +302,8 @@ class SSYNCBandwidthThreadControl(BandwidthThreadControl):
                     
             except Queue.Empty:
                 self.alive = False
-    
+  
+
 class IterLike(object):
     def __init__(self, obj_data, timeout):
         self.closed = False
@@ -299,16 +311,13 @@ class IterLike(object):
         self.timeout = timeout
         self.buf = b''
 
-        self.epoll = select.epoll()
-        self.epoll.register(self.obj_data, select.EPOLLIN | select.EPOLLPRI)
-
     def __iter__(self):
         return self
 
     def read_with_timeout(self, size):
         try:
             with Timeout(self.timeout):
-                chunk = os.read(self.obj_data, size)
+                chunk = self.obj_data.read(size)
         except Timeout:
             self.close()
             raise
@@ -319,16 +328,9 @@ class IterLike(object):
 
     def next(self, size=64 * 1024):
         if len(self.buf) < size:
-            r = self.epoll.poll(self.timeout)
-
-            if len(r) == 0:
-                self.close()
-            elif self.obj_data in r[0]:
-                self.buf += self.read_with_timeout(size - len(self.buf))
-                if self.buf == b'':
-                    raise StopIteration('Stopped iterator exp')
-            else:
-                raise StopIteration('Stopped iterator exi')
+            self.buf += self.read_with_timeout(size - len(self.buf))
+            if self.buf == b'':
+                raise StopIteration('Stopped iterator exp')
 
         if len(self.buf) > size:
             data = self.buf[:size]
@@ -390,12 +392,11 @@ class IterLike(object):
         return lines
 
     def close(self):
+        print "---> Closing BW-DIFF Pipe <---"
         if self.closed:
             return
         self.closed = True
-        self.epoll.unregister(self.obj_data)
-        self.epoll.close()
-        os.close(self.obj_data)
+        self.obj_data.close()
 
     def __del__(self):
         self.close()
@@ -504,10 +505,11 @@ class BandwidthControl(object):
        
     def _register_request(self, tenant, request, app_iter = None):
         r, w = os.pipe()
+        out_reader = os.fdopen(r,'r') 
         write_pipe = os.fdopen(w,'w')
         
         if app_iter:
-            read_pipe = app_iter.obj_data
+            read_pipe = app_iter.read
         else:
             read_pipe = request.environ['wsgi.input'].read
 
@@ -531,18 +533,15 @@ class BandwidthControl(object):
           
         thr.add_stream_to_tenant(write_pipe, read_pipe, policy, device)
         
-        #request.environ['wsgi.input'] = IterLike(r, 10)
-        return IterLike(r, 10)
-        
+        return IterLike(out_reader, 10)
     
     def _register_response(self, tenant, response, app_iter = None):
         r, w = os.pipe()
+        out_reader = os.fdopen(r,'r')
         write_pipe = os.fdopen(w,'w')
         
         if app_iter:
-            #fd = app_iter.obj_data
-            #read_pipe = os.fdopen(fd, "r")
-            read_pipe = response.app_iter
+            read_pipe = app_iter
         else:
             if self.server == 'proxy': 
                 read_pipe = response.app_iter
@@ -562,15 +561,15 @@ class BandwidthControl(object):
             thr.daemon = True
             thr.start()
         else: thr = self.tenant_response_thread[tenant]
-        
+
         thr.add_stream_to_tenant(write_pipe, read_pipe, policy, device)
-        #response.app_iter = IterLike(r, 10)
-        return IterLike(r, 10)
+ 
+        return IterLike(out_reader, 10)
         
     def register_ssync(self, request):
         r, w = os.pipe()
         write_pipe = os.fdopen(w,'w')
-        read_pipe = os.fdopen(r,'r')
+        out_reader = os.fdopen(r,'r')
              
         ssync_reader = request.environ["wsgi.input"]
         _, device, partition = request.environ["PATH_INFO"].split("/")
@@ -584,7 +583,7 @@ class BandwidthControl(object):
                 thr.add_stream_to_tenant(write_pipe, ssync_reader, 
                                          partition, device)
                 thr.start()
-                request.environ['wsgi.input'] = read_pipe
+                request.environ['wsgi.input'] = out_reader
             else:
                 #TODO: Return Response
                 self.log.info("SDS Bandwidth Differentiation -"
@@ -599,7 +598,7 @@ class BandwidthControl(object):
                                      partition, device)
             thr.start()
         
-            request.environ['wsgi.input'] = read_pipe
+            request.environ['wsgi.input'] = out_reader
 
         
     def _start_monitoring_producer(self):
