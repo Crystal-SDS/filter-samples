@@ -327,7 +327,7 @@ class IterLike(object):
 
     def next(self, size=64 * 1024):
         if len(self.buf) < size:
-            r, w, e = select.select([self.obj_data], [], [], self.timeout)
+            r, _, _ = select.select([self.obj_data], [], [], self.timeout)
             if len(r) == 0:
                 self.close()
 
@@ -401,228 +401,8 @@ class IterLike(object):
     def close(self):
         if self.closed:
             return
-        print "---> Closed BW-DIFF Pipe <---"
-        self.closed = True
         os.close(self.obj_data)
-
-    def __del__(self):
-        self.close()
-        
-class IterLikePoll(object):
-    def __init__(self, obj_data, timeout):
-        self.closed = False
-        self.obj_data = obj_data
-        self.timeout = timeout
-        self.buf = b''
-
-        self.epoll = select.epoll()
-        self.epoll.register(self.obj_data, select.EPOLLIN | select.EPOLLPRI)
-
-    def __iter__(self):
-        return self
-
-    def read_with_timeout(self, size):
-        try:
-            with Timeout(self.timeout):
-                chunk = os.read(self.obj_data,size)
-        except Timeout:
-            self.close()
-            raise
-        except Exception:
-            self.close()
-            raise
-        return chunk
-
-    def next(self, size=64 * 1024):
-        if len(self.buf) < size:
-            r = self.epoll.poll(self.timeout)
-
-            if len(r) == 0:
-                self.close()
-            elif self.obj_data in r[0]:
-                self.buf += self.read_with_timeout(size - len(self.buf))
-                if self.buf == b'':
-                    raise StopIteration('Stopped iterator exp')
-            else:
-                raise StopIteration('Stopped iterator exi')
-
-        if len(self.buf) > size:
-            data = self.buf[:size]
-            self.buf = self.buf[size:]
-        else:
-            data = self.buf
-            self.buf = b''
-        return data
-
-    def _close_check(self):
-        if self.closed:
-            raise ValueError('I/O operation on closed file')
-
-    def read(self, size=64 * 1024):
-        self._close_check()
-        return self.next(size)
-
-    def readline(self, size=-1):
-        self._close_check()
-
-        # read data into self.buf if there is not enough data
-        while b'\n' not in self.buf and \
-              (size < 0 or len(self.buf) < size):
-            if size < 0:
-                chunk = self.read()
-            else:
-                chunk = self.read(size - len(self.buf))
-            if not chunk:
-                break
-            self.buf += chunk
-
-        # Retrieve one line from buf
-        data, sep, rest = self.buf.partition(b'\n')
-        data += sep
-        self.buf = rest
-
-        # cut out size from retrieved line
-        if size >= 0 and len(data) > size:
-            self.buf = data[size:] + self.buf
-            data = data[:size]
-
-        return data
-
-    def readlines(self, sizehint=-1):
-        self._close_check()
-        lines = []
-        try:
-            while True:
-                line = self.readline(sizehint)
-                if not line:
-                    break
-                lines.append(line)
-                if sizehint >= 0:
-                    sizehint -= len(line)
-                    if sizehint <= 0:
-                        break
-        except StopIteration:
-            pass
-        return lines
-
-    def close(self):
-        if self.closed:
-            return
         self.closed = True
-        self.epoll.unregister(self.obj_data)
-        self.epoll.close()
-        os.close(self.obj_data)
-
-    def __del__(self):
-        self.close()
-    
-
-class IterLikeOpen(object):
-    def __init__(self, obj_data, timeout):
-        self.closed = False
-        self.obj_data = obj_data
-        self.timeout = timeout
-        self.buf = b''
-        
-        """
-        if hasattr(obj_data, 'read'):
-            self.reader = True
-        else:
-            self.reader = False
-        """   
-
-    def __iter__(self):
-        return self
-
-    def read_with_timeout(self, size):
-        try:
-            with Timeout(self.timeout):
-                #if self.reader:
-                chunk = self.obj_data.read(size)
-                #else: # PROXY CASE
-                #    chunk = self.obj_data.next()
-        except Timeout:
-            self.close()
-            raise
-        except Exception:
-            self.close()
-            raise
-        return chunk
-
-    def next(self, size=64 * 1024):
-        if len(self.buf) < size:
-            self.buf += self.read_with_timeout(size - len(self.buf))
-            
-            if self.buf == b'':
-                self.close()
-                raise StopIteration('Stopped iterator exp')
-
-        if len(self.buf) > size:
-            data = self.buf[:size]
-            self.buf = self.buf[size:]
-        else:
-            data = self.buf
-            self.buf = b''
-        
-        return data
-
-    def _close_check(self):
-        if self.closed:
-            raise ValueError('I/O operation on closed file')
-
-    def read(self, size=64 * 1024):
-        self._close_check()
-        return self.next(size)
-
-    def readline(self, size=-1):
-        self._close_check()
-
-        # read data into self.buf if there is not enough data
-        while b'\n' not in self.buf and \
-              (size < 0 or len(self.buf) < size):
-            if size < 0:
-                chunk = self.read()
-            else:
-                chunk = self.read(size - len(self.buf))
-            if not chunk:
-                break
-            self.buf += chunk
-
-        # Retrieve one line from buf
-        data, sep, rest = self.buf.partition(b'\n')
-        data += sep
-        self.buf = rest
-
-        # cut out size from retrieved line
-        if size >= 0 and len(data) > size:
-            self.buf = data[size:] + self.buf
-            data = data[:size]
-
-        return data
-
-    def readlines(self, sizehint=-1):
-        self._close_check()
-        lines = []
-        try:
-            while True:
-                line = self.readline(sizehint)
-                if not line:
-                    break
-                lines.append(line)
-                if sizehint >= 0:
-                    sizehint -= len(line)
-                    if sizehint <= 0:
-                        break
-        except StopIteration:
-            pass
-        return lines
-
-    def close(self):
-        if self.closed:
-            return
-        self.closed = True
-        print "---> Closing BW-DIFF Pipe <---"
-        self.obj_data.close()
 
     def __del__(self):
         self.close()
@@ -634,6 +414,7 @@ class Singleton(type):
         if cls not in cls._instances:
             cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
+
 
 class BandwidthControl(object):
     __metaclass__ = Singleton
@@ -692,7 +473,6 @@ class BandwidthControl(object):
        
     def _register_request(self, tenant, request, app_iter = None):
         r, w = os.pipe()
-        #out_reader = os.fdopen(r,'r') 
         write_pipe = os.fdopen(w,'w')
         
         if app_iter:
@@ -725,7 +505,6 @@ class BandwidthControl(object):
     
     def _register_response(self, tenant, response, app_iter = None):
         r, w = os.pipe()
-        #out_reader = os.fdopen(r,'r')
         write_pipe = os.fdopen(w,'w')
         
         if app_iter:
