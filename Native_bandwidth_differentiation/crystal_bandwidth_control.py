@@ -171,17 +171,14 @@ class BandwidthThreadControl(Thread):
             time.sleep(SAMPLE_CONTROL_INTERVAL)
              
     def _read_chunk(self, reader):
-        
-        if self.server == 'proxy' and self.method == 'GET':
-            try:
-                return reader.next()
-            except StopIteration:
-                return False
-        else:
-            try:
-                return reader(CHUNK_SIZE)
-            except StopIteration:
-                return False
+        try:
+            if hasattr(reader, 'read'):
+                chunk = reader.read(CHUNK_SIZE)
+            else:
+                chunk = reader.next()
+            return chunk
+        except StopIteration:
+            return False
             
     def _write_with_timeout(self, writer, chunk):
         try:
@@ -477,12 +474,12 @@ class BandwidthControl(object):
         
         if app_iter:
             # Never enter here
-            read_pipe = app_iter.read
+            read_pipe = app_iter
         else:
-            read_pipe = request.environ['wsgi.input'].read
+            read_pipe = request.environ['wsgi.input']
 
         if self.server=="proxy":
-            container = request.environ['PATH_INFO'].rsplit('/',2)[1]
+            container = request.environ['PATH_INFO'].split('/')[3] 
             policy = int(request.environ['swift.container/'+tenant+'/'+container]['storage_policy'])
         else:
             policy = int(request.environ['HTTP_X_BACKEND_STORAGE_POLICY_INDEX'])
@@ -509,12 +506,11 @@ class BandwidthControl(object):
         
         if app_iter:
             read_pipe = app_iter
- 
         else:
             if self.server == 'proxy':
                 read_pipe = response.app_iter
             else: 
-                read_pipe = response.app_iter._fp.read
+                read_pipe = response.app_iter._fp
 
         #device = response.headers['device']
         device = "sdb1"
