@@ -459,22 +459,22 @@ class BandwidthControl(object):
         self._start_monitoring_producer()
         self._start_assignments_consumer()
 
-    def execute(self, req_resp, app_iter, requets_data):     
+    def execute(self, req_resp, crystal_iter, requets_data):     
         if isinstance(req_resp, Response):
-            app_iter = self._register_response(requets_data['account'], req_resp, app_iter)
+            crystal_iter = self._register_response(requets_data['account'], req_resp, crystal_iter)
             
         elif isinstance(req_resp, Request):
-            app_iter = self._register_request(requets_data['account'], req_resp, app_iter)
+            crystal_iter = self._register_request(requets_data['account'], req_resp, crystal_iter)
 
-        return app_iter
+        return crystal_iter
        
-    def _register_request(self, tenant, request, app_iter = None):
+    def _register_request(self, tenant, request, crystal_iter):
         r, w = os.pipe()
         write_pipe = os.fdopen(w,'w')
         
-        if app_iter:
-            # Never enter here
-            read_pipe = app_iter
+        if crystal_iter:
+            # Never enter here because this filter will be always the first
+            read_pipe = crystal_iter
         else:
             read_pipe = request.environ['wsgi.input']
 
@@ -488,7 +488,7 @@ class BandwidthControl(object):
         device = "sdb1"
             
         if tenant not in self.tenant_request_thread:
-            self.log.info("SDS Bandwidth Differentiation - Creating new "
+            self.log.info("Crystal Filters - Bandwidth Differentiation Filter - Creating new "
                           "PUT thread for tenant " + tenant)       
             thr = BandwidthThreadControl(self.log, self.server, 'PUT')
             self.tenant_request_thread[tenant] = thr
@@ -500,12 +500,12 @@ class BandwidthControl(object):
         
         return IterLike(r, 10)
     
-    def _register_response(self, tenant, response, app_iter = None):
+    def _register_response(self, tenant, response, crystal_iter):
         r, w = os.pipe()
         write_pipe = os.fdopen(w,'w')
         
-        if app_iter:
-            read_pipe = app_iter
+        if crystal_iter:
+            read_pipe = crystal_iter
         else:
             if self.server == 'proxy':
                 read_pipe = response.app_iter
@@ -518,7 +518,7 @@ class BandwidthControl(object):
         policy = int(response.environ['HTTP_X_BACKEND_STORAGE_POLICY_INDEX'])
         
         if tenant not in self.tenant_response_thread:  
-            self.log.info("SDS Bandwidth Differentiation - Creating new "
+            self.log.info("Crystal Filters - Bandwidth Differentiation Filter - Creating new "
                           "GET thread for tenant " + tenant)   
             thr = BandwidthThreadControl(self.log, self.server, 'GET')
             self.tenant_response_thread[tenant] = thr
@@ -550,7 +550,7 @@ class BandwidthControl(object):
                 request.environ['wsgi.input'] = out_reader
             else:
                 #TODO: Return Response
-                self.log.info("SDS Bandwidth Differentiation -"
+                self.log.info("Crystal Filters - Bandwidth Differentiation Filter -"
                               " replication_one_per_device parameter is"
                               " setted to True: rejecting SSYNC /"+device+"/"
                               +partition+" request") 
@@ -566,7 +566,7 @@ class BandwidthControl(object):
 
         
     def _start_monitoring_producer(self):
-        self.log.info("SDS Bandwidth Differentiation - Strating monitoring "
+        self.log.info("Crystal Filters - Bandwidth Differentiation Filter - Strating monitoring "
                       "producer")
         channel = self.connection.channel()       
         thbw_get = Thread(target = self.bwinfo_threaded, 
@@ -613,7 +613,7 @@ class BandwidthControl(object):
             '''Clean useless threads'''                
             for tenant in threads.keys():
                 if not threads[tenant].alive:
-                    self.log.info("SDS Bandwidth Differentiation - Killing "
+                    self.log.info("Crystal Filters - Bandwidth Differentiation Filter - Killing "
                                   "thread "+tenant)
                     del threads[tenant]
      
@@ -661,7 +661,7 @@ class BandwidthControl(object):
         return tenant_bw
     
     def _start_assignments_consumer(self):
-        self.log.info("SDS Bandwidth Differentiation - Strating object "
+        self.log.info("Crystal Filters - Bandwidth Differentiation Filter - Strating object "
                       "storage assignments consumer")
         consumer_tag = self.global_conf.get('consumer_tag')
         queue_bw = consumer_tag + ":" + self.ip

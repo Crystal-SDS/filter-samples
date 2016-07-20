@@ -1,8 +1,6 @@
-from swift.common.swob import Response
 from threading import Semaphore
 from eventlet import Timeout
 import hashlib
-import select
 import time
 import os
 
@@ -29,18 +27,18 @@ class CacheControl(object):
         self.logger = logger
         self.cache = BlockCache()
         
-    def execute(self, req_resp, app_iter, requets_data):
+    def execute(self, req_resp, crystal_iter, requets_data):
         method = requets_data['method']
         
         if method == 'get':
-            app_iter = self._get_object_from_cache(req_resp, app_iter)
+            crystal_iter = self._get_object_from_cache(req_resp, crystal_iter)
             
         elif method == 'put':
-            app_iter = self._put_object_in_cache(req_resp, app_iter)
+            crystal_iter = self._put_object_in_cache(req_resp, crystal_iter)
 
-        return app_iter
+        return crystal_iter
     
-    def _get_object_from_cache(self, req_resp, app_iter):
+    def _get_object_from_cache(self, req_resp, crystal_iter):
                 
         resp_headers = {}
         """ CHECK IF FILE IS IN CACHE """
@@ -63,17 +61,17 @@ class CacheControl(object):
                 # TODO: Return headers if necessary
                 return cached_object
             
-            if app_iter:
-                return app_iter
+            if crystal_iter:
+                return crystal_iter
             else:
                 return req_resp.app_iter
 
-    def _put_object_in_cache(self, req_resp, app_iter):
+    def _put_object_in_cache(self, request, crystal_iter):
 
         if os.path.exists(CACHE_PATH):
-            object_path = req_resp.environ['PATH_INFO']
-            object_size = int(req_resp.headers.get('Content-Length',''))
-            object_etag = req_resp.headers.get('ETag','')
+            object_path = request.environ['PATH_INFO']
+            object_size = int(request.headers.get('Content-Length',''))
+            object_etag = request.headers.get('ETag','')
             object_id = (hashlib.md5(object_path).hexdigest())
             
             to_evict = self.cache.access_cache("PUT", object_id, object_size, object_etag)
@@ -81,10 +79,10 @@ class CacheControl(object):
             for object_id in to_evict:
                 os.remove(CACHE_PATH+object_id)
             
-            if app_iter:
-                reader = app_iter
+            if crystal_iter:
+                reader = crystal_iter
             else:
-                reader = req_resp.environ['wsgi.input']
+                reader = request.environ['wsgi.input']
 
             self.logger.info('SDS Cache Filter - Object '+object_path+' stored in cache with ID: '+object_id)
             
