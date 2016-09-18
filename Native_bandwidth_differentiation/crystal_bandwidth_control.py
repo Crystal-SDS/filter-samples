@@ -10,6 +10,7 @@ import pika
 import json
 import copy
 import os
+import redis
 
 
 CHUNK_SIZE = 65536            
@@ -17,14 +18,14 @@ CHUNK_SIZE = 65536
 SAMPLE_CONTROL_INTERVAL = 0.1
 MB = 1024*1024.
 '''Maximum throughout of a single node in the system (Gb Ethernet = 110MB (APPROX))'''
-BW_MAX = 120
+BW_MAX = 115
 
 BEST_CHUNK_READ_TIME = 0.0002
 
 
 class BandwidthThreadControl(Thread):
     
-    def __init__(self, log, server = None, method = None):
+    def __init__(self, log, initial_bw, server = None, method = None):
         
         Thread.__init__(self)
         self.log = log
@@ -43,7 +44,7 @@ class BandwidthThreadControl(Thread):
         '''Control periodically the enforcement of bw limits'''
         #self.control_process = eventlet.spawn(self.rate_control)
         '''Bandwidth limit per thread'''
-        self.aggregated_bandwidth_limit = BW_MAX  #Minimum BW for non-QoS tenants
+        self.aggregated_bandwidth_limit = initial_bw
         self.bw_limits = dict()
         '''Monitoring information about bw consumption'''
         self.monitoring_info = dict()
@@ -59,6 +60,7 @@ class BandwidthThreadControl(Thread):
         self.total_sleep_mean = self.calc_sleep
         self.iters_mean = 1
         self.counter = 0
+        self.bad_counter = 0
         
         self.rate_control = Thread(target=self.rate_control)
         self.rate_control.daemon = True
@@ -151,16 +153,24 @@ class BandwidthThreadControl(Thread):
             if new_dynamic_sleep/self.dynamic_sleep_mean < 1.2 and new_dynamic_sleep/self.dynamic_sleep_mean > 0.7:
                 f.write(" --> GOOD <--\n")
                 self.counter += 1
+                self.bad_counter = 0
                 self.dynamic_sleep = abs(new_dynamic_sleep)
             else:
                 f.write(" --> BAAD <--\n")
                 self.counter  = 0
-                self.dynamic_sleep = self.dynamic_sleep_mean
+                self.bad_counter += 1
+                
+                if self.bad_counter > 10:
+                    self.dynamic_sleep = new_dynamic_sleep
+                    self.bad_counter = 0
+                else:
+                    self.dynamic_sleep = self.dynamic_sleep_mean
                 
             
             f.write("Mean: "+'{0:.6f}'.format(round(self.dynamic_sleep_mean,6))+"\n")
             f.write("Calculated: "+'{0:.6f}'.format(round(self.calc_sleep,6))+"\n")  
             f.write("Trusted Counter: "+str(self.counter)+"\n")
+            f.write("Bad Counter: "+str(self.bad_counter)+"\n")
             f.close()
             
             '''Reset counters for new interval calculation'''
@@ -441,6 +451,8 @@ class BandwidthControl(object):
         self.global_conf['replication_one_per_dev'] = False
         # ------------------------------------------
         
+        self.redis = redis.StrictRedis('controller', 6379, 0)
+        
         self.server = self.global_conf.get('execution_server')
         
         rabbit_host = self.global_conf.get('rabbit_host')
@@ -489,8 +501,13 @@ class BandwidthControl(object):
             
         if tenant not in self.tenant_request_thread:
             self.log.info("Crystal Filters - Bandwidth Differentiation Filter - Creating new "
-                          "PUT thread for tenant " + tenant)       
-            thr = BandwidthThreadControl(self.log, self.server, 'PUT')
+                          "PUT thread for tenant " + tenant)
+            bw = self.redis.hgetall('bw:'+tenant)
+            if str(policy) in bw:
+                initial_bw = int(bw[str(policy)])
+            else:
+                initial_bw = BW_MAX
+            thr = BandwidthThreadControl(self.log, initial_bw, self.server, 'PUT')
             self.tenant_request_thread[tenant] = thr
             thr.daemon = True
             thr.start()
@@ -519,8 +536,13 @@ class BandwidthControl(object):
         
         if tenant not in self.tenant_response_thread:  
             self.log.info("Crystal Filters - Bandwidth Differentiation Filter - Creating new "
-                          "GET thread for tenant " + tenant)   
-            thr = BandwidthThreadControl(self.log, self.server, 'GET')
+                          "GET thread for tenant " + tenant)
+            bw = self.redis.hgetall('bw:'+tenant)
+            if str(policy) in bw:
+                initial_bw = int(bw[str(policy)])
+            else:
+                initial_bw = BW_MAX 
+            thr = BandwidthThreadControl(self.log, initial_bw, self.server, 'GET')
             self.tenant_response_thread[tenant] = thr
             thr.daemon = True
             thr.start()
