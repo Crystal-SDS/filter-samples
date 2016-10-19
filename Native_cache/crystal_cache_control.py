@@ -5,7 +5,7 @@ import time
 import os
 
 ENABLE_CACHE = True
-#Cache size limit in bytes
+# Cache size limit in bytes
 CACHE_MAX_SIZE = 200*1024*1024*1024
 available_policies = {"LRU", "LFU"}
 CACHE_PATH = "/mnt/ssd/"
@@ -13,6 +13,7 @@ CACHE_PATH = "/mnt/ssd/"
 
 class Singleton(type):
     _instances = {}
+
     def __call__(cls, *args, **kwargs):  # @NoSelf
         if cls not in cls._instances:
             cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
@@ -27,8 +28,8 @@ class CacheControl(object):
         self.logger = logger
         self.cache = BlockCache()
         
-    def execute(self, req_resp, crystal_iter, requets_data):
-        method = requets_data['method']
+    def execute(self, req_resp, crystal_iter, request_data):
+        method = request_data['method']
         
         if method == 'get':
             crystal_iter = self._get_object_from_cache(req_resp, crystal_iter)
@@ -96,7 +97,7 @@ class IterLike(object):
         self.timeout = timeout
         self.buf = b''
         
-        self.cahed_object = open(CACHE_PATH+object_id, 'w');
+        self.cached_object = open(CACHE_PATH+object_id, 'w');
 
     def __iter__(self):
         return self
@@ -105,7 +106,7 @@ class IterLike(object):
         try:
             with Timeout(self.timeout):
                 chunk = self.obj_data.read(size)
-                self.cahed_object.write(chunk)
+                self.cached_object.write(chunk)
         except Timeout:
             self.close()
             raise
@@ -185,7 +186,7 @@ class IterLike(object):
         if self.closed:
             return
         self.obj_data.close()
-        self.cahed_object.close()
+        self.cached_object.close()
         self.closed = True
 
     def __del__(self):
@@ -219,11 +220,11 @@ class CacheObjectDescriptor(object):
 class BlockCache(object):
     
     def __init__(self):
-        #This will contain the actual data of each block
+        # This will contain the actual data of each block
         self.descriptors_dict = {}
-        #Structure to store the cache metadata of each block
+        # Structure to store the cache metadata of each block
         self.descriptors = [] 
-        #Cache statistics
+        # Cache statistics
         self.get_hits = 0
         self.put_hits = 0
         self.misses = 0
@@ -232,9 +233,9 @@ class BlockCache(object):
         self.writes = 0
         self.cache_size_bytes = 0
         
-        #Eviction policy
+        # Eviction policy
         self.policy = "LFU"
-        #Synchronize shared cache content
+        # Synchronize shared cache content
         self.semaphore = Semaphore()
         
     
@@ -247,7 +248,7 @@ class BlockCache(object):
             elif operation == 'GET':
                 result = self._get(block_id)
             else: raise Exception("Unsupported cache operation" + operation)
-            #Sort descriptors based on eviction policy order
+            # Sort descriptors based on eviction policy order
             self._sort_descriptors()
             self.semaphore.release()
         return result
@@ -255,18 +256,18 @@ class BlockCache(object):
     def _put(self, block_id, block_size, etag):
         self.writes+=1
         to_evict = [];
-        #Check if the cache is full and if the element is new
+        # Check if the cache is full and if the element is new
         if CACHE_MAX_SIZE <= (self.cache_size_bytes + block_size) and block_id not in self.descriptors_dict:
-            #Evict as many files as necessary until having enough space for new one
+            # Evict as many files as necessary until having enough space for new one
             while (CACHE_MAX_SIZE <= (self.cache_size_bytes + block_size)):
-                #Get the last element ordered by the eviction policy
+                # Get the last element ordered by the eviction policy
                 self.descriptors, evicted = self.descriptors[:-1], self.descriptors[-1]
-                #Reduce the size of the cache
+                # Reduce the size of the cache
                 self.cache_size_bytes -= evicted.size
-                #Icrease evictions count and add to
+                # Increase evictions count and add to
                 self.evictions+=1
                 to_evict.append(evicted.block_id);
-                #Remove from evictions dict                
+                # Remove from evictions dict
                 del self.descriptors_dict[evicted.block_id]
             
         if block_id in self.descriptors_dict:
@@ -276,7 +277,7 @@ class BlockCache(object):
             descriptor.put_hit()  
             self.put_hits += 1    
         else:
-            #Add the new element to the cache
+            # Add the new element to the cache
             descriptor = CacheObjectDescriptor(block_id, block_size, etag)
             self.descriptors.append(descriptor)
             self.descriptors_dict[block_id] = descriptor
@@ -297,7 +298,7 @@ class BlockCache(object):
         return None, 0, ''
     
     def _sort_descriptors(self):
-        #Order the descriptor list depending on the policy
+        # Order the descriptor list depending on the policy
         if self.policy == "LRU":
             self.descriptors.sort(key=lambda desc: desc.last_access, reverse=True) 
         elif self.policy == "LFU":

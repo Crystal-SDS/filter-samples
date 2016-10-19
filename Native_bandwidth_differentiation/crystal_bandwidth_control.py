@@ -471,12 +471,12 @@ class BandwidthControl(object):
         self._start_monitoring_producer()
         self._start_assignments_consumer()
 
-    def execute(self, req_resp, crystal_iter, requets_data):     
+    def execute(self, req_resp, crystal_iter, request_data):
         if isinstance(req_resp, Response):
-            crystal_iter = self._register_response(requets_data['account'], req_resp, crystal_iter)
+            crystal_iter = self._register_response(request_data['account'], req_resp, crystal_iter)
             
         elif isinstance(req_resp, Request):
-            crystal_iter = self._register_request(requets_data['account'], req_resp, crystal_iter)
+            crystal_iter = self._register_request(request_data['account'], req_resp, crystal_iter)
 
         return crystal_iter
        
