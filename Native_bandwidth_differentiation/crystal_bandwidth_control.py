@@ -563,9 +563,8 @@ class BandwidthControl(object):
         device = "sdb1"
 
         if tenant not in self.tenant_request_thread:
-            self.log.info(
-                "Crystal Filters - Bandwidth Differentiation Filter - Creating new "
-                "PUT thread for tenant " + tenant)
+            self.log.info("Crystal Filter - Bandwidth Differentiation Filter -"
+                          " Creating new PUT thread for tenant " + tenant)
             bw = self.redis.hgetall('bw:' + tenant)
             if str(policy) in bw:
                 initial_bw = int(bw[str(policy)])
@@ -601,9 +600,8 @@ class BandwidthControl(object):
         policy = int(response.environ['HTTP_X_BACKEND_STORAGE_POLICY_INDEX'])
 
         if tenant not in self.tenant_response_thread:
-            self.log.info(
-                "Crystal Filters - Bandwidth Differentiation Filter - Creating new "
-                "GET thread for tenant " + tenant)
+            self.log.info("Crystal Filter - Bandwidth Differentiation Filter -"
+                          " Creating new GET thread for tenant " + tenant)
             bw = self.redis.hgetall('bw:' + tenant)
             if str(policy) in bw:
                 initial_bw = int(bw[str(policy)])
@@ -640,10 +638,10 @@ class BandwidthControl(object):
                 request.environ['wsgi.input'] = out_reader
             else:
                 # TODO: Return Response
-                self.log.info(
-                    "Crystal Filters - Bandwidth Differentiation Filter -"
-                    " replication_one_per_device parameter is"
-                    " setted to True: rejecting SSYNC /" + device + "/" + partition + " request")
+                self.log.info("Crystal Filter - Bandwidth Differentiation "
+                              "Filter replication_one_per_device parameter is "
+                              "setted to True: rejecting SSYNC /" + device +
+                              "/" + partition + " request")
         else:
 
             thr = SSYNCBandwidthThreadControl(self.log)
@@ -655,9 +653,8 @@ class BandwidthControl(object):
             request.environ['wsgi.input'] = out_reader
 
     def _start_monitoring_producer(self):
-        self.log.info(
-            "Crystal Filters - Bandwidth Differentiation Filter - Strating monitoring "
-            "producer")
+        self.log.info("Crystal Filter - Bandwidth Differentiation Filter - "
+                      "Strating monitoring producer")
         channel = self.connection.channel()
         thbw_get = Thread(target=self.bwinfo_threaded,
                           name='bwinfo_get_threaded',
@@ -683,14 +680,7 @@ class BandwidthControl(object):
                                   self.ssync_thread, 'SSYNC'))
         thbw_ssync.start()
 
-    def bwinfo_threaded(
-            self,
-            name,
-            channel,
-            interval,
-            routing_key,
-            threads,
-            method):
+    def bwinfo_threaded(self, name, channel, interval, routing_key, threads, method):
         monitoring_data = dict()
         exchange = self.global_conf.get('exchange_osinfo')
 
@@ -711,9 +701,8 @@ class BandwidthControl(object):
             '''Clean useless threads'''
             for tenant in threads.keys():
                 if not threads[tenant].alive:
-                    self.log.info(
-                        "Crystal Filters - Bandwidth Differentiation Filter - Killing "
-                        "thread " + tenant)
+                    self.log.info("Crystal Filter - Bandwidth Differentiation"
+                                  " Filter : Killing thread " + tenant)
                     del threads[tenant]
 
     def _get_monitoring_info(self, threads, interval):
@@ -764,9 +753,8 @@ class BandwidthControl(object):
         return tenant_bw
 
     def _start_assignments_consumer(self):
-        self.log.info(
-            "Crystal Filters - Bandwidth Differentiation Filter - Strating object "
-            "storage assignments consumer")
+        self.log.info("Crystal Filter - Bandwidth Differentiation Filter - "
+                      " Strating object storage assignments consumer")
         consumer_tag = self.global_conf.get('consumer_tag')
         queue_bw = consumer_tag + ":" + self.ip
         routing_key = "#." + self.ip.replace('.', '-').replace(':', '-') + ".#"
