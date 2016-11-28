@@ -1,0 +1,6 @@
+import java.util.function.*;
+%s
+
+public class LambdaFromStringHelper {
+    public static %s getLambda() {return (%s);}
+}
