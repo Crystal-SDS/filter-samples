@@ -38,7 +38,7 @@ public class TestStorlet {
 	        outStreams.add(outStream);
 	        
 			FileOutputStream loggerFile = new FileOutputStream(LOGGER_FILE_NAME);	
-			RecordReaderStorlet storlet = new RecordReaderStorlet();	
+			LambdaPushdownStorlet storlet = new LambdaPushdownStorlet();	
 			StorletLogger logger = new StorletLogger(loggerFile.getFD());				
 			Map<String, String> parameters = new HashMap<String, String>();	
 			

@@ -51,7 +51,7 @@ import static com.urv.storlet.lambdapushdown.StreamUtils.asStream;
  *
  */
 
-public class RecordReaderStorlet implements IStorlet {
+public class LambdaPushdownStorlet implements IStorlet {
 	
 	protected static String DELIMITER = "\n";
 	protected static String CHARSET = "UTF-8";
