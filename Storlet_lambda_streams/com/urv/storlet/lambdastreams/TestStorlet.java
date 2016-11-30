@@ -1,4 +1,4 @@
-package com.urv.storlet.lambdapushdown;
+package com.urv.storlet.lambdastreams;
 
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -36,18 +36,12 @@ public class TestStorlet {
 	        ArrayList<StorletOutputStream> outStreams = new ArrayList<StorletOutputStream>();
 	        outStreams.add(outStream);
 	        
-	        NoopStorlet storlet = new NoopStorlet();
-	        //LambdaPushdownStorlet storlet = new LambdaPushdownStorlet();
+	        //NoopStorlet storlet = new NoopStorlet();
+	        LambdaStreamsStorlet storlet = new LambdaExampleStorlet();
 	        
 			FileOutputStream loggerFile = new FileOutputStream(LOGGER_FILE_NAME);					
 			StorletLogger logger = new StorletLogger(loggerFile.getFD());				
 			Map<String, String> parameters = new HashMap<String, String>();	
-			
-			parameters.put("1-map", "s -> s + \"---!!!*****\"");
-			parameters.put("2-map", "s -> s + \"1234563564545\"");
-			parameters.put("3-filter", "s -> s.contains(\"B\")");	
-			parameters.put("4-map", "s -> s + \"aaaaaaaa\"");
-			parameters.put("5-filter", "s -> s.contains(\"A\")");	
 			
 			System.out.println("before storlet");
 			storlet.invoke(inputStreams, outStreams, parameters, logger);
