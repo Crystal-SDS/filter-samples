@@ -1,6 +1,5 @@
 package com.urv.storlet.lambdastreams;
 
-import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -10,10 +9,8 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
 
 import com.ibm.storlet.common.IStorlet;
 import com.ibm.storlet.common.StorletException;
@@ -34,7 +31,7 @@ import com.ibm.storlet.common.StorletOutputStream;
 
 public abstract class LambdaStreamsStorlet implements IStorlet {
 	
-	private static Character DELIMITER = '\n';
+	private static final String DELIMITER = "\n";
 	
 	protected Map<String, String> parameters = null;
 	
@@ -45,8 +42,8 @@ public abstract class LambdaStreamsStorlet implements IStorlet {
 	 * so the storlet can write the result on the output stream. The signature
 	 * of the method is tied to Strings, as we primary focus on textual data
 	 * processing (e.g., logs, CSV,...). Working with other types of objects 
-	 * should be done by the developer by implementing the necessary transformations
-	 * within the method. 
+	 * in a stream should be done by the developer by implementing the necessary 
+	 * transformations within the method. 
 	 * 
 	 * @param Raw data stream
 	 * @return Processed data stream
@@ -75,16 +72,20 @@ public abstract class LambdaStreamsStorlet implements IStorlet {
 		//Store this variable inside the object to exploit dynamic lambdas passed as parameters
 		this.parameters = parameters;
 		
-		//Red InputStream as a Stream, and apply functions
-		//TODO: Put more efforts on doing the read/write process and stream conversion more efficient
+		//Convert InputStream as a Stream, and apply functions
+		//TODO: Performance problem here: We are dealing with characters, not bytes, so we use
+		//BufferedWriter/Reader. This is convenient for executing lambdas, but we get worse
+		//performance compared to managing input/output streams in bytes.
 		BufferedWriter writeBuffer = new BufferedWriter(new OutputStreamWriter(os));		
 		try (BufferedReader readBuffer = new BufferedReader(new InputStreamReader(is))) {
 			writeYourLambdas(readBuffer.lines()).forEach(line -> {
-			try {
-				writeBuffer.write(line + DELIMITER);
-			}catch(IOException e){
-				logger.emitLog(this.getClass().getName() + " raised IOException: " + e.getMessage());
-			}});
+				try {
+					StringBuilder output = new StringBuilder().append(line).append(DELIMITER);
+					writeBuffer.write(output.toString());
+				}catch(IOException e){
+					logger.emitLog(this.getClass().getName() + " raised IOException: " + e.getMessage());
+				}
+			});
 			writeBuffer.close();
 			is.close();
 			os.close();
@@ -97,12 +98,5 @@ public abstract class LambdaStreamsStorlet implements IStorlet {
 		
 	}
 	
-	protected <T> Stream<T> asStream(Iterator<T> sourceIterator) {
-	    return asStream(sourceIterator, false);
-	}
 	
-	protected <T> Stream<T> asStream(Iterator<T> sourceIterator, boolean parallel) {
-	    Iterable<T> iterable = () -> sourceIterator;
-	    return StreamSupport.stream(iterable.spliterator(), parallel);
-	}
 }

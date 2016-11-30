@@ -1,7 +1,10 @@
-package com.urv.storlet.lambdastreams;
+package com.urv.storlet.lambdastreams.examples;
 
+import java.util.Comparator;
 import java.util.function.Function;
 import java.util.stream.Stream;
+
+import com.urv.storlet.lambdastreams.LambdaStreamsStorlet;
 
 /**
  * Example of how we can benefit from trating Storlet streams into
@@ -14,7 +17,7 @@ import java.util.stream.Stream;
  * @author Raul Gracia
  *
  */
-public class LambdaExampleStorlet extends LambdaStreamsStorlet {
+public class CSVPersonStreamStorlet extends LambdaStreamsStorlet {
 
 	@Override
 	protected Stream<String> writeYourLambdas(Stream<String> stream) {
@@ -30,6 +33,7 @@ public class LambdaExampleStorlet extends LambdaStreamsStorlet {
 		  String[] p = line.split(", ");
 		  return new Person(p[0], Integer.parseInt(p[1]), p[2], p[3]);
 	};
+	
 }
 
 class Person {
