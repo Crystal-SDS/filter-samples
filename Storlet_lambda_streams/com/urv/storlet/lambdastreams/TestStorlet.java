@@ -14,8 +14,8 @@ import com.urv.storlet.noop.NoopStorlet;
 
 public class TestStorlet {
 	
-	public static final String INPUT_FILE_NAME = "input/test.txt";
-	public static final String OUTPUT_FILE_NAME = "input/test.records";
+	public static final String INPUT_FILE_NAME = "input/people.txt";
+	public static final String OUTPUT_FILE_NAME = "input/people.results";
 	public static final String OUTPUT_MD_FILE_NAME = "input/output_record_md.txt";
 	public static final String LOGGER_FILE_NAME = "input/logger";	
 	

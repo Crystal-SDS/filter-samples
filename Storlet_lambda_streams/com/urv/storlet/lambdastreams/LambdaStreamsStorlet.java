@@ -34,6 +34,8 @@ import com.ibm.storlet.common.StorletOutputStream;
 
 public abstract class LambdaStreamsStorlet implements IStorlet {
 	
+	private static Character DELIMITER = '\n';
+	
 	protected Map<String, String> parameters = null;
 	
 	/**
@@ -75,10 +77,11 @@ public abstract class LambdaStreamsStorlet implements IStorlet {
 		try (BufferedReader readBuffer = new BufferedReader(new InputStreamReader(is))) {
 			writeYourLambdas(readBuffer.lines()).forEach(line -> {
 			try {
-				writeBuffer.write(line);
+				writeBuffer.write(line + DELIMITER);
 			}catch(IOException e){
 				logger.emitLog(this.getClass().getName() + " raised IOException: " + e.getMessage());
 			}});
+			writeBuffer.close();
 			is.close();
 			os.close();
 		} catch (IOException e1) {
