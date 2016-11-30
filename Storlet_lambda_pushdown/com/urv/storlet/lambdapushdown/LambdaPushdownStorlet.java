@@ -1,24 +1,14 @@
 package com.urv.storlet.lambdapushdown;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Scanner;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
-import com.ibm.storlet.common.IStorlet;
-import com.ibm.storlet.common.StorletException;
-import com.ibm.storlet.common.StorletInputStream;
-import com.ibm.storlet.common.StorletLogger;
-import com.ibm.storlet.common.StorletObjectOutputStream;
-import com.ibm.storlet.common.StorletOutputStream;
 import com.urv.storlet.lambdastreams.LambdaStreamsStorlet;
 
 import main.java.pl.joegreen.lambdaFromString.LambdaFactory;
@@ -31,20 +21,18 @@ import main.java.pl.joegreen.lambdaFromString.TypeReference;
  * is to enable a more generic form of delegating computations to the
  * object store to improve the data ingestion problem of Big Data analytics.
  * 
- * This class performs three important tasks:
+ * This class performs two important tasks:
  * 
- * 1.- It transforms byte-level stream management of Swift objects into Java 8
- * streams, so applying functions (filter, map,..) to the data is much easier.
- * 
- * 2.- It enables to apply a list of functions to each Stream record, as well
+ * 1.- It enables to apply a list of functions to each Stream record, as well
  * as to define the order in which such functions will be applied.
  * 
- * 3.- It enables to dynamically compile the functions to be applied on records
+ * 2.- It enables to dynamically compile the functions to be applied on records
  * as defined in the HTTP headers (based on lambdaFromString library).
  * 
  * Such functionality can enable frameworks like Spark to intelligently delegate
  * computations, such as data filtering and transformations, to the Swift cluster,
- * making the analytics jobs much faster.
+ * making the analytics jobs much faster. This storlet relies on the LambdaStreamsStorlet
+ * to do the byte-level in/out streams conversion to Java 8 Streams.
  * 
  * @author Raul Gracia
  *
