@@ -40,9 +40,13 @@ public abstract class LambdaStreamsStorlet implements IStorlet {
 	
 	/**
 	 * This method is intended to be implemented by developers aiming at
-	 * executing some computations on data streams. The developer only
+	 * executing some computations on textual data streams. The developer only
 	 * needs to operate on the stream passed by parameter and return it,
-	 * so the storlet can write the result on the output stream. 
+	 * so the storlet can write the result on the output stream. The signature
+	 * of the method is tied to Strings, as we primary focus on textual data
+	 * processing (e.g., logs, CSV,...). Working with other types of objects 
+	 * should be done by the developer by implementing the necessary transformations
+	 * within the method. 
 	 * 
 	 * @param Raw data stream
 	 * @return Processed data stream
