@@ -40,15 +40,13 @@ import main.java.pl.joegreen.lambdaFromString.TypeReference;
 
 public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
 	
-	protected static String DELIMITER = "\n";
-	protected static String CHARSET = "UTF-8";
-	
 	//FIXME: To initialize the compiler, the library uses a dummy text file 
 	//(helperClassTemplate.txt) that should at the moment exist to avoid errors
 	protected LambdaFactory lambdaFactory = LambdaFactory.get();
 	
-	protected Map<String, Function<Stream<String>, Stream<String>>> lambdaCache = new HashMap<>();
-	
+	//This map stores the signature of a lambda as a key and the lambda object as a value.
+	//It acts as a cache of repeated lambdas to avoid compilation overhead of already compiled lambdas.
+	protected Map<String, Function<Stream<String>, Stream<String>>> lambdaCache = new HashMap<>();	
 	
 	@Override
 	protected Stream<String> writeYourLambdas(Stream<String> stream) {
@@ -63,8 +61,7 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
         
         //Iterate over the parameters that describe the functions to the applied to the stream,
         //compile and instantiate the appropriate lambdas, and add them to the list.
-        for (String functionKey: sortedMapKeys){
-        	System.out.println(functionKey);        	
+        for (String functionKey: sortedMapKeys){	
 			if (!lambdaCache.containsKey(parameters.get(functionKey))){
 				//We get a map to instantiate
 				if (functionKey.contains("map")){
