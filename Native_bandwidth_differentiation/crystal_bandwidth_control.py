@@ -490,11 +490,7 @@ class BandwidthControl(object):
         r, w = os.pipe()
         write_pipe = os.fdopen(w, 'w')
 
-        if crystal_iter:
-            # Never enter here because this filter will be always the first
-            read_pipe = crystal_iter
-        else:
-            read_pipe = request.environ['wsgi.input']
+        read_pipe = crystal_iter
 
         if self.server == "proxy":
             container = request.environ['PATH_INFO'].split('/')[3]
@@ -528,13 +524,10 @@ class BandwidthControl(object):
         r, w = os.pipe()
         write_pipe = os.fdopen(w, 'w')
 
-        if crystal_iter:
-            read_pipe = crystal_iter
+        if self.server == 'object':
+            read_pipe = crystal_iter._fp
         else:
-            if self.server == 'proxy':
-                read_pipe = response.app_iter
-            else:
-                read_pipe = response.app_iter._fp
+            read_pipe = crystal_iter
 
         # device = response.headers['device']
         device = "sdb1"
