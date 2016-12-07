@@ -466,7 +466,9 @@ class BandwidthControl(object):
         rabbit_user = self.global_conf.get('rabbit_username')
         rabbit_pass = self.global_conf.get('rabbit_password')
 
-        self.ip = self.global_conf.get('bind_ip')+":"+self.global_conf.get('bind_port')
+        # self.ip = self.global_conf.get('bind_ip')+":"+self.global_conf.get('bind_port')
+
+        self.identifier = self.global_conf.get('identifier')
 
         credentials = pika.PlainCredentials(rabbit_user, rabbit_pass)
         parameters = pika.ConnectionParameters(host=rabbit_host,
@@ -627,7 +629,7 @@ class BandwidthControl(object):
             eventlet.sleep(interval)
             monitoring_info = get_monitoring_info(threads, interval)
             if monitoring_info:
-                monitoring_data[self.ip] = monitoring_info
+                monitoring_data[self.identifier] = monitoring_info
                 channel.basic_publish(exchange=exchange,
                                       routing_key=routing_key,
                                       body=json.dumps(monitoring_data))
@@ -688,8 +690,9 @@ class BandwidthControl(object):
         self.log.info("Crystal Filters - Bandwidth Differentiation Filter - Strating object "
                       "storage assignments consumer")
         consumer_tag = self.global_conf.get('consumer_tag')
-        queue_bw = consumer_tag + ":" + self.ip
-        routing_key = "#."+self.ip.replace('.', '-').replace(':', '-') + ".#"
+        queue_bw = consumer_tag + ":" + self.identifier
+        # routing_key = "#."+self.ip.replace('.', '-').replace(':', '-') + ".#"
+        routing_key = "#." + self.identifier + ".#"
 
         channel = self.connection.channel()
 
