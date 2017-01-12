@@ -20,15 +20,15 @@ class AbstractFilter(object):
         return crystal_iter
 
     def _get_object(self, req_resp, crystal_iter):
-        return IterLike(crystal_iter, 10, self._filter_put)
+        return IterLike(crystal_iter, 10, self.filter_put)
 
     def _put_object(self, request, crystal_iter):
-        return IterLike(crystal_iter, 10, self._filter_get)
+        return IterLike(crystal_iter, 10, self.filter_get)
 
-    def _filter_put(self, chunk):
+    def filter_put(self, chunk):
         return chunk
 
-    def _filter_get(self, chunk):
+    def filter_get(self, chunk):
         return chunk
 
 
@@ -37,8 +37,9 @@ class IterLike(object):
         self.closed = False
         self.obj_data = obj_data
         self.timeout = timeout
-        self.filter = filter_method
         self.buf = b''
+
+        self.filter = filter_method
 
     def __iter__(self):
         return self
@@ -46,7 +47,10 @@ class IterLike(object):
     def read_with_timeout(self, size):
         try:
             with Timeout(self.timeout):
-                chunk = self.obj_data.read(size)
+                if hasattr(self.obj_data, 'read'):
+                    chunk = self.obj_data.read(size)
+                else:
+                    chunk = self.obj_data.next()
                 chunk = self.filter(chunk)
         except Timeout:
             self.close()
@@ -127,7 +131,6 @@ class IterLike(object):
         if self.closed:
             return
         self.obj_data.close()
-        self.cahed_object.close()
         self.closed = True
 
     def __del__(self):
