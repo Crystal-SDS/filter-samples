@@ -1,4 +1,4 @@
-from crystal_filter_middleware.filters.abstract_filter import AbstractFilter, IterLike
+from crystal_filter_middleware.filters.abstract_filter import AbstractFilter
 
 
 class NoopFilter(AbstractFilter):

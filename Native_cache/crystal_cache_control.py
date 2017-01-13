@@ -1,4 +1,4 @@
-from crystal_filter_middleware.filters.abstract_filter import AbstractFilter, IterLike
+from crystal_filter_middleware.filters.abstract_filter import AbstractFilter, FilterIter
 from threading import Semaphore
 import hashlib
 import time
@@ -68,7 +68,7 @@ class CacheControl(AbstractFilter):
             self.logger.info('SDS Cache Filter - Object '+object_path+' stored in cache with ID: '+object_id)
 
             self.cached_object = open(CACHE_PATH+object_id, 'w')
-            return IterLike(crystal_iter, 10, self._filter_put)
+            return FilterIter(crystal_iter, 10, self._filter_put)
 
     def _filter_put(self, chunk):
         self.cached_object.write(chunk)
