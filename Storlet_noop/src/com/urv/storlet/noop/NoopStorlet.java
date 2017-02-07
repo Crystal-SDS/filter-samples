@@ -24,6 +24,9 @@ public class NoopStorlet implements IStorlet {
 			ArrayList<StorletOutputStream> outStreams,
 			Map<String, String> parameters,
 			StorletLogger logger) throws StorletException {
+		
+		long before = System.nanoTime();
+		logger.emitLog("----- Init Noop Storlet -----");
 
 		StorletInputStream sis = inStreams.get(0);
 		InputStream is = sis.getStream();
@@ -45,5 +48,8 @@ public class NoopStorlet implements IStorlet {
 		} catch (IOException e) {
 			logger.emitLog("NOP Storlet - raised IOException: " + e.getMessage());
 		}
+		
+		long after = System.nanoTime();
+		logger.emitLog("Stream Record Storlet -- Elapsed [ms]: "+((after-before)/1000000L));
 	}
 }
