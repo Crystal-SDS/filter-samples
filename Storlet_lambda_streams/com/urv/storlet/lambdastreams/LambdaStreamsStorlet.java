@@ -76,7 +76,7 @@ public abstract class LambdaStreamsStorlet implements IStorlet {
 		//TODO: Performance problem here: We are dealing with characters, not bytes, so we use
 		//BufferedWriter/Reader. This is convenient for executing lambdas, but we get worse
 		//performance compared to managing input/output streams in bytes.
-		BufferedWriter writeBuffer = new BufferedWriter(new OutputStreamWriter(os));		
+		BufferedWriter writeBuffer = new BufferedWriter(new OutputStreamWriter(os));
 		try (BufferedReader readBuffer = new BufferedReader(new InputStreamReader(is))) {
 			writeYourLambdas(readBuffer.lines()).forEach(line -> {
 				try {

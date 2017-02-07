@@ -1,13 +1,12 @@
 package com.urv.storlet.lambdastreams.examples;
 
-import java.util.Comparator;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
 import com.urv.storlet.lambdastreams.LambdaStreamsStorlet;
 
 /**
- * Example of how we can benefit from trating Storlet streams into
+ * Example of how we can benefit from managing Storlet streams into
  * Java 8 Streams. This example requires a CSV input file such as:
  * 
  * Ola Nordmann, 61, Sandnes, Norway
