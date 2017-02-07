@@ -10,12 +10,12 @@ import com.ibm.storlet.common.StorletInputStream;
 import com.ibm.storlet.common.StorletLogger;
 import com.ibm.storlet.common.StorletObjectOutputStream;
 import com.ibm.storlet.common.StorletOutputStream;
+import com.urv.storlet.lambdastreams.examples.LambdaFilterGridPocketStorlet;
 import com.urv.storlet.lambdastreams.examples.LambdaNoopStorlet;
-import com.urv.storlet.noop.NoopStorlet;
 
 public class TestStorlet {
 	
-	public static final String INPUT_FILE_NAME = "input/test.txt";
+	public static final String INPUT_FILE_NAME = "input/meter_gen-20170206162236.csv";
 	public static final String OUTPUT_FILE_NAME = "input/test.results";
 	public static final String OUTPUT_MD_FILE_NAME = "input/output_record_md.txt";
 	public static final String LOGGER_FILE_NAME = "input/logger";	
@@ -38,7 +38,7 @@ public class TestStorlet {
 	        outStreams.add(outStream);
 	        
 	        //NoopStorlet storlet = new NoopStorlet();
-	        LambdaStreamsStorlet storlet = new LambdaNoopStorlet();
+	        LambdaStreamsStorlet storlet = new LambdaFilterGridPocketStorlet();
 	        
 			FileOutputStream loggerFile = new FileOutputStream(LOGGER_FILE_NAME);					
 			StorletLogger logger = new StorletLogger(loggerFile.getFD());				
@@ -52,7 +52,7 @@ public class TestStorlet {
 			outfile.close();
 			outfile_md.close();
 			
-			for (int i=0; i<10; i++){
+			for (int i=0; i<1; i++){
 			
 				infile = new FileInputStream(INPUT_FILE_NAME);
 				outfile = new FileOutputStream(OUTPUT_FILE_NAME);
