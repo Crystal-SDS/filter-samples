@@ -16,7 +16,7 @@ import redis
 CHUNK_SIZE = 65536
 '''Check and control the data flow every interval'''
 SAMPLE_CONTROL_INTERVAL = 0.1
-MB = 1024 * 1024.
+MB = 1024*1024.
 '''Maximum throughout of a single node in the system (Gb Ethernet = 110MB (APPROX))'''
 BW_MAX = 115
 
@@ -53,17 +53,9 @@ class BandwidthThreadControl(Thread):
         self.alive = True
 
         '''Dynamic sleep mean ** EXPERIMENTAL **'''
-        max_iterations = int(
-            round(
-                ((self.aggregated_bandwidth_limit *
-                  SAMPLE_CONTROL_INTERVAL) *
-                 MB) /
-                CHUNK_SIZE))
+        max_iterations = int(round(((self.aggregated_bandwidth_limit*SAMPLE_CONTROL_INTERVAL) * MB) / CHUNK_SIZE))
         read_chunk = BEST_CHUNK_READ_TIME * max_iterations
-        self.calc_sleep = (
-            (SAMPLE_CONTROL_INTERVAL -
-             read_chunk) /
-            max_iterations)
+        self.calc_sleep = ((SAMPLE_CONTROL_INTERVAL - read_chunk) / max_iterations)
         self.dynamic_sleep_mean = self.calc_sleep
         self.total_sleep_mean = self.calc_sleep
         self.iters_mean = 1
@@ -95,24 +87,19 @@ class BandwidthThreadControl(Thread):
             if limit == 0.0:
                 limit = 1.0
             self.bw_limits[policy][device] = limit
-            '''Update total aggregated bw limits that should be shared among
-            devices'''
+            '''
+            Update total aggregated bw limits that should be shared among
+            devices
+            '''
             updated_aggregated_bw_limit = 0.0
             for policy in self.bw_limits.keys():
                 for device in self.bw_limits[policy]:
-                    updated_aggregated_bw_limit += self.bw_limits[
-                        policy][device]
+                    updated_aggregated_bw_limit += self.bw_limits[policy][device]
             self.aggregated_bandwidth_limit = updated_aggregated_bw_limit
 
-            max_iterations = int(
-                round(
-                    ((self.aggregated_bandwidth_limit *
-                      SAMPLE_CONTROL_INTERVAL) *
-                     MB) /
-                    CHUNK_SIZE))
+            max_iterations = int(round(((self.aggregated_bandwidth_limit * SAMPLE_CONTROL_INTERVAL) * MB) / CHUNK_SIZE))
             read_chunk = BEST_CHUNK_READ_TIME * max_iterations
-            self.calc_sleep = (
-                (SAMPLE_CONTROL_INTERVAL - read_chunk) / max_iterations)
+            self.calc_sleep = ((SAMPLE_CONTROL_INTERVAL - read_chunk) / max_iterations)
 
             self.dynamic_sleep_mean = self.calc_sleep
             self.dynamic_sleep = self.calc_sleep
@@ -123,42 +110,35 @@ class BandwidthThreadControl(Thread):
             print "Non-existing key in limits dict: " + str(e)
 
     def get_transferred_bw(self):
-        '''Build a dictionary where entries are individual requests and the
-        content is POLICY: DEVICE:BW'''
+        '''
+        Build a dictionary where entries are individual requests and the
+        content is POLICY: DEVICE:BW
+        '''
         monitoring_copy = copy.deepcopy(self.monitoring_info)
         diff_transferred_data = dict()
         for policy in monitoring_copy:
             diff_transferred_data[policy] = dict()
             for device in monitoring_copy[policy]:
-                diff_transferred_data[policy][device] = monitoring_copy[policy][
-                    device] - self.previous_monitoring_info[policy][device]
+                diff_transferred_data[policy][device] = \
+                    monitoring_copy[policy][device] - self.previous_monitoring_info[policy][device]
         self.previous_monitoring_info = monitoring_copy
         return diff_transferred_data
 
     def rate_control(self):
         while self.alive:
-            f = open("/home/lab144/control.dat", 'a+')
+            f = open("/tmp/bw_control.dat", 'a+')
             f.write("----------------\n")
-            f.write("Queue: " + str(self.stream_pipe_queue.qsize()) + "\n")
-            f.write("Iters: " + str(self.number_of_iterations) + "\n")
+            f.write("Queue: "+str(self.stream_pipe_queue.qsize())+"\n")
+            f.write("Iters: "+str(self.number_of_iterations)+"\n")
 
             '''Estimate the current transfer bw'''
-            bandwidth_estimation = round(
-                float(
-                    self.transferred_bytes_control /
-                    MB) /
-                SAMPLE_CONTROL_INTERVAL,
-                2)
-            f.write(str(self.aggregated_bandwidth_limit) + "\n")
-            f.write(str(bandwidth_estimation) + "\n")
+            bandwidth_estimation = round(float(self.transferred_bytes_control/MB)/SAMPLE_CONTROL_INTERVAL, 2)
+            f.write(str(self.aggregated_bandwidth_limit)+"\n")
+            f.write(str(bandwidth_estimation)+"\n")
 
-            slo_deviation = abs(
-                bandwidth_estimation -
-                self.aggregated_bandwidth_limit)
-            slo_deviation_percentage = (
-                slo_deviation * 100) / self.aggregated_bandwidth_limit
-            sleep_precentage = (
-                self.dynamic_sleep * slo_deviation_percentage) / 100
+            slo_deviation = abs(bandwidth_estimation - self.aggregated_bandwidth_limit)
+            slo_deviation_percentage = (slo_deviation*100)/self.aggregated_bandwidth_limit
+            sleep_precentage = (self.dynamic_sleep*slo_deviation_percentage)/100
 
             '''If we are under the expected bw, no sleep'''
             if bandwidth_estimation < self.aggregated_bandwidth_limit:
@@ -166,28 +146,15 @@ class BandwidthThreadControl(Thread):
             elif bandwidth_estimation > self.aggregated_bandwidth_limit:
                 new_dynamic_sleep = self.dynamic_sleep + sleep_precentage
 
-            f.write(
-                "Antes: " +
-                '{0:.6f}'.format(
-                    round(
-                        self.dynamic_sleep,
-                        6)) +
-                "\n")
-            f.write(
-                "Sleep: " +
-                '{0:.6f}'.format(
-                    round(
-                        new_dynamic_sleep,
-                        6)) +
-                "\n")
+            f.write("Antes: "+'{0:.6f}'.format(round(self.dynamic_sleep, 6))+"\n")
+            f.write("Sleep: "+'{0:.6f}'.format(round(new_dynamic_sleep, 6))+"\n")
 
             if slo_deviation < 1.5:
                 self.iters_mean += 1
                 self.total_sleep_mean += new_dynamic_sleep
-                self.dynamic_sleep_mean = self.total_sleep_mean / self.iters_mean
+                self.dynamic_sleep_mean = self.total_sleep_mean/self.iters_mean
 
-            if new_dynamic_sleep / self.dynamic_sleep_mean < 1.2 and new_dynamic_sleep / \
-                    self.dynamic_sleep_mean > 0.7:
+            if new_dynamic_sleep/self.dynamic_sleep_mean < 1.2 and new_dynamic_sleep/self.dynamic_sleep_mean > 0.7:
                 f.write(" --> GOOD <--\n")
                 self.counter += 1
                 self.bad_counter = 0
@@ -203,22 +170,10 @@ class BandwidthThreadControl(Thread):
                 else:
                     self.dynamic_sleep = self.dynamic_sleep_mean
 
-            f.write(
-                "Mean: " +
-                '{0:.6f}'.format(
-                    round(
-                        self.dynamic_sleep_mean,
-                        6)) +
-                "\n")
-            f.write(
-                "Calculated: " +
-                '{0:.6f}'.format(
-                    round(
-                        self.calc_sleep,
-                        6)) +
-                "\n")
-            f.write("Trusted Counter: " + str(self.counter) + "\n")
-            f.write("Bad Counter: " + str(self.bad_counter) + "\n")
+            f.write("Mean: "+'{0:.6f}'.format(round(self.dynamic_sleep_mean, 6))+"\n")
+            f.write("Calculated: "+'{0:.6f}'.format(round(self.calc_sleep, 6))+"\n")
+            f.write("Trusted Counter: "+str(self.counter)+"\n")
+            f.write("Bad Counter: "+str(self.bad_counter)+"\n")
             f.close()
 
             '''Reset counters for new interval calculation'''
@@ -253,9 +208,11 @@ class BandwidthThreadControl(Thread):
 
                 (writer, reader, policy, device) = stream_data
                 request_finished = False
-                '''To share aggregated_bandwidth_limit among several requests
+                '''
+                To share aggregated_bandwidth_limit among several requests
                 to different devices,provide to each request a proportional
-                number of chunk transfer operations'''
+                number of chunk transfer operations
+                '''
 
                 proportional_device_bw = 32
 
@@ -265,12 +222,11 @@ class BandwidthThreadControl(Thread):
                         if chunk:
                             self._write_with_timeout(writer, chunk)
 
-                            '''Account for the transferred data'''
+                            # Account for the transferred data
                             self.transferred_bytes_control += len(chunk)
                             self.monitoring_info[policy][device] += len(chunk)
                             self.number_of_iterations += 1
-                            '''Wait to achieve a certain bw rate
-                               on this flow'''
+                            # Wait to achieve a certain bw rate on this flow'''
                             time.sleep(max(0, self.dynamic_sleep))
                         else:
                             if hasattr(reader, 'close'):
@@ -360,7 +316,6 @@ class SSYNCBandwidthThreadControl(BandwidthThreadControl):
 
 
 class IterLike(object):
-
     def __init__(self, obj_data, timeout):
         self.closed = False
         self.obj_data = obj_data
@@ -470,9 +425,7 @@ class Singleton(type):
 
     def __call__(cls, *args, **kwargs):  # @NoSelf
         if cls not in cls._instances:
-            cls._instances[cls] = super(
-                Singleton, cls).__call__(
-                *args, **kwargs)
+            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
 
 
@@ -497,8 +450,7 @@ class BandwidthControl(object):
         self.global_conf['consumer_tag'] = 'bw_assignations'
         self.global_conf['routing_key_get'] = 'bwdifferentiation.get_bw_info'
         self.global_conf['routing_key_put'] = 'bwdifferentiation.put_bw_info'
-        self.global_conf[
-            'routing_key_ssync'] = 'bwdifferentiation.ssync_bw_info'
+        self.global_conf['routing_key_ssync'] = 'bwdifferentiation.ssync_bw_info'
         self.global_conf['exchange_osinfo'] = 'amq.topic'
         self.global_conf['interval_osinfo'] = 0.2
         self.global_conf['bandwidth_control'] = 'proxy'
@@ -514,8 +466,9 @@ class BandwidthControl(object):
         rabbit_user = self.global_conf.get('rabbit_username')
         rabbit_pass = self.global_conf.get('rabbit_password')
 
-        self.ip = self.global_conf.get(
-            'bind_ip') + ":" + self.global_conf.get('bind_port')
+        # self.ip = self.global_conf.get('bind_ip')+":"+self.global_conf.get('bind_port')
+
+        self.identifier = self.global_conf.get('identifier')
 
         credentials = pika.PlainCredentials(rabbit_user, rabbit_pass)
         parameters = pika.ConnectionParameters(host=rabbit_host,
@@ -526,14 +479,12 @@ class BandwidthControl(object):
         self._start_monitoring_producer()
         self._start_assignments_consumer()
 
-    def execute(self, req_resp, crystal_iter, request_data):
+    def execute(self, req_resp, crystal_iter, requets_data):
         if isinstance(req_resp, Response):
-            crystal_iter = self._register_response(
-                request_data['account'], req_resp, crystal_iter)
+            crystal_iter = self._register_response(requets_data['account'], req_resp, crystal_iter)
 
         elif isinstance(req_resp, Request):
-            crystal_iter = self._register_request(
-                request_data['account'], req_resp, crystal_iter)
+            crystal_iter = self._register_request(requets_data['account'], req_resp, crystal_iter)
 
         return crystal_iter
 
@@ -541,37 +492,26 @@ class BandwidthControl(object):
         r, w = os.pipe()
         write_pipe = os.fdopen(w, 'w')
 
-        if crystal_iter:
-            # Never enter here because this filter will be always the first
-            read_pipe = crystal_iter
-        else:
-            read_pipe = request.environ['wsgi.input']
+        read_pipe = crystal_iter
 
         if self.server == "proxy":
             container = request.environ['PATH_INFO'].split('/')[3]
-            policy = int(
-                request.environ[
-                    'swift.container/' +
-                    tenant +
-                    '/' +
-                    container]['storage_policy'])
+            policy = int(request.environ['swift.container/'+tenant+'/'+container]['storage_policy'])
         else:
-            policy = int(
-                request.environ['HTTP_X_BACKEND_STORAGE_POLICY_INDEX'])
+            policy = int(request.environ['HTTP_X_BACKEND_STORAGE_POLICY_INDEX'])
 
         # device = request.environ['PATH_INFO'].split('/',2)[1]
         device = "sdb1"
 
         if tenant not in self.tenant_request_thread:
-            self.log.info("Crystal Filter - Bandwidth Differentiation Filter -"
-                          " Creating new PUT thread for tenant " + tenant)
-            bw = self.redis.hgetall('bw:' + tenant)
+            self.log.info("Crystal Filters - Bandwidth Differentiation Filter - Creating new "
+                          "PUT thread for tenant " + tenant)
+            bw = self.redis.hgetall('bw:'+tenant)
             if str(policy) in bw:
                 initial_bw = int(bw[str(policy)])
             else:
                 initial_bw = BW_MAX
-            thr = BandwidthThreadControl(
-                self.log, initial_bw, self.server, 'PUT')
+            thr = BandwidthThreadControl(self.log, initial_bw, self.server, 'PUT')
             self.tenant_request_thread[tenant] = thr
             thr.daemon = True
             thr.start()
@@ -586,13 +526,10 @@ class BandwidthControl(object):
         r, w = os.pipe()
         write_pipe = os.fdopen(w, 'w')
 
-        if crystal_iter:
-            read_pipe = crystal_iter
+        if self.server == 'object':
+            read_pipe = crystal_iter._fp
         else:
-            if self.server == 'proxy':
-                read_pipe = response.app_iter
-            else:
-                read_pipe = response.app_iter._fp
+            read_pipe = crystal_iter
 
         # device = response.headers['device']
         device = "sdb1"
@@ -600,15 +537,14 @@ class BandwidthControl(object):
         policy = int(response.environ['HTTP_X_BACKEND_STORAGE_POLICY_INDEX'])
 
         if tenant not in self.tenant_response_thread:
-            self.log.info("Crystal Filter - Bandwidth Differentiation Filter -"
-                          " Creating new GET thread for tenant " + tenant)
-            bw = self.redis.hgetall('bw:' + tenant)
+            self.log.info("Crystal Filters - Bandwidth Differentiation Filter - Creating new "
+                          "GET thread for tenant " + tenant)
+            bw = self.redis.hgetall('bw:'+tenant)
             if str(policy) in bw:
                 initial_bw = int(bw[str(policy)])
             else:
                 initial_bw = BW_MAX
-            thr = BandwidthThreadControl(
-                self.log, initial_bw, self.server, 'GET')
+            thr = BandwidthThreadControl(self.log, initial_bw, self.server, 'GET')
             self.tenant_response_thread[tenant] = thr
             thr.daemon = True
             thr.start()
@@ -631,21 +567,21 @@ class BandwidthControl(object):
         if self.global_conf['replication_one_per_dev']:
             if not self.ssync_thread:
                 thr = SSYNCBandwidthThreadControl(self.log)
-                self.ssync_thread["source:" + source] = thr
+                self.ssync_thread["source:"+source] = thr
                 thr.add_stream_to_tenant(write_pipe, ssync_reader,
                                          partition, device)
                 thr.start()
                 request.environ['wsgi.input'] = out_reader
             else:
                 # TODO: Return Response
-                self.log.info("Crystal Filter - Bandwidth Differentiation "
-                              "Filter replication_one_per_device parameter is "
-                              "setted to True: rejecting SSYNC /" + device +
-                              "/" + partition + " request")
+                self.log.info("Crystal Filters - Bandwidth Differentiation Filter -"
+                              " replication_one_per_device parameter is"
+                              " setted to True: rejecting SSYNC /"+device+"/" +
+                              partition + " request")
         else:
 
             thr = SSYNCBandwidthThreadControl(self.log)
-            self.ssync_thread["source:" + source] = thr
+            self.ssync_thread["source:"+source] = thr
             thr.add_stream_to_tenant(write_pipe, ssync_reader,
                                      partition, device)
             thr.start()
@@ -653,8 +589,8 @@ class BandwidthControl(object):
             request.environ['wsgi.input'] = out_reader
 
     def _start_monitoring_producer(self):
-        self.log.info("Crystal Filter - Bandwidth Differentiation Filter - "
-                      "Strating monitoring producer")
+        self.log.info("Crystal Filters - Bandwidth Differentiation Filter - Strating monitoring "
+                      "producer")
         channel = self.connection.channel()
         thbw_get = Thread(target=self.bwinfo_threaded,
                           name='bwinfo_get_threaded',
@@ -693,7 +629,7 @@ class BandwidthControl(object):
             eventlet.sleep(interval)
             monitoring_info = get_monitoring_info(threads, interval)
             if monitoring_info:
-                monitoring_data[self.ip] = monitoring_info
+                monitoring_data[self.identifier] = monitoring_info
                 channel.basic_publish(exchange=exchange,
                                       routing_key=routing_key,
                                       body=json.dumps(monitoring_data))
@@ -701,8 +637,8 @@ class BandwidthControl(object):
             '''Clean useless threads'''
             for tenant in threads.keys():
                 if not threads[tenant].alive:
-                    self.log.info("Crystal Filter - Bandwidth Differentiation"
-                                  " Filter : Killing thread " + tenant)
+                    self.log.info("Crystal Filters - Bandwidth Differentiation Filter - Killing "
+                                  "thread "+tenant)
                     del threads[tenant]
 
     def _get_monitoring_info(self, threads, interval):
@@ -736,8 +672,7 @@ class BandwidthControl(object):
             thread_transferred_data = threads[source].get_transferred_bw()
             for partition in thread_transferred_data.keys():
                 for device in thread_transferred_data[partition].keys():
-                    thread_transferred_data[partition][
-                        device] /= float(interval)
+                    thread_transferred_data[partition][device] /= float(interval)
                     if thread_transferred_data[partition][device] == 0.0:
                         del thread_transferred_data[partition]
                     else:
@@ -747,30 +682,24 @@ class BandwidthControl(object):
                 tenant_bw[source] = dict()
                 for partition in thread_transferred_data:
                     for device in thread_transferred_data[partition]:
-                        tenant_bw[source][device] = thread_transferred_data[
-                            partition][device]
+                        tenant_bw[source][device] = thread_transferred_data[partition][device]
 
         return tenant_bw
 
     def _start_assignments_consumer(self):
-        self.log.info("Crystal Filter - Bandwidth Differentiation Filter - "
-                      " Strating object storage assignments consumer")
+        self.log.info("Crystal Filters - Bandwidth Differentiation Filter - Strating object "
+                      "storage assignments consumer")
         consumer_tag = self.global_conf.get('consumer_tag')
-        queue_bw = consumer_tag + ":" + self.ip
-        routing_key = "#." + self.ip.replace('.', '-').replace(':', '-') + ".#"
+        queue_bw = consumer_tag + ":" + self.identifier
+        # routing_key = "#."+self.ip.replace('.', '-').replace(':', '-') + ".#"
+        routing_key = "#." + self.identifier + ".#"
 
         channel = self.connection.channel()
 
         channel.queue_declare(queue=queue_bw)
         channel.exchange_declare(exchange=consumer_tag, type='topic')
-        channel.queue_bind(
-            exchange=consumer_tag,
-            queue=queue_bw,
-            routing_key=routing_key)
-        channel.basic_consume(
-            self._bw_assignations,
-            queue=queue_bw,
-            no_ack=True)
+        channel.queue_bind(exchange=consumer_tag, queue=queue_bw, routing_key=routing_key)
+        channel.basic_consume(self._bw_assignations, queue=queue_bw, no_ack=True)
 
         thbw_assignation = Thread(target=channel.start_consuming)
         thbw_assignation.start()
@@ -779,14 +708,16 @@ class BandwidthControl(object):
         _, account, method, policy, device, bw = body.split('/')
         if method == "GET":
             try:
-                self.tenant_response_thread[account].update_bw_limits(
-                    int(policy), device, float(bw))
+                self.tenant_response_thread[account].update_bw_limits(int(policy),
+                                                                      device,
+                                                                      float(bw))
             except KeyError:
                 pass
         elif method == "PUT":
             try:
-                self.tenant_request_thread[account].update_bw_limits(
-                    int(policy), device, float(bw))
+                self.tenant_request_thread[account].update_bw_limits(int(policy),
+                                                                     device,
+                                                                     float(bw))
             except KeyError:
                 pass
         elif method == "SSYNC":

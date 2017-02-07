@@ -1,5 +1,5 @@
+from crystal_filter_middleware.filters.abstract_filter import AbstractFilter, FilterIter
 from threading import Semaphore
-from eventlet import Timeout
 import hashlib
 import time
 import os
@@ -20,26 +20,15 @@ class Singleton(type):
         return cls._instances[cls]
 
 
-class CacheControl(object):
+class CacheControl(AbstractFilter):
 
     __metaclass__ = Singleton
 
     def __init__(self, global_conf, filter_conf, logger):
-        self.logger = logger
+        super(AbstractFilter, self).__init__(global_conf, filter_conf, logger)
         self.cache = BlockCache()
 
-    def execute(self, req_resp, crystal_iter, requets_data):
-        method = requets_data['method']
-
-        if method == 'get':
-            crystal_iter = self._get_object_from_cache(req_resp, crystal_iter)
-
-        elif method == 'put':
-            crystal_iter = self._put_object_in_cache(req_resp, crystal_iter)
-
-        return crystal_iter
-
-    def _get_object_from_cache(self, req_resp, crystal_iter):
+    def _get_object(self, req_resp, crystal_iter):
 
         resp_headers = {}
         """ CHECK IF FILE IS IN CACHE """
@@ -63,7 +52,7 @@ class CacheControl(object):
 
         return crystal_iter
 
-    def _put_object_in_cache(self, request, crystal_iter):
+    def _put_object(self, request, crystal_iter):
 
         if os.path.exists(CACHE_PATH):
             object_path = request.environ['PATH_INFO']
@@ -78,110 +67,12 @@ class CacheControl(object):
 
             self.logger.info('SDS Cache Filter - Object '+object_path+' stored in cache with ID: '+object_id)
 
-            return IterLike(crystal_iter, object_id, 10)
+            self.cached_object = open(CACHE_PATH+object_id, 'w')
+            return FilterIter(crystal_iter, 10, self._filter_put)
 
-
-class IterLike(object):
-    def __init__(self, obj_data, object_id, timeout):
-        self.closed = False
-        self.obj_data = obj_data
-        self.timeout = timeout
-        self.buf = b''
-
-        self.cached_object = open(CACHE_PATH+object_id, 'w')
-
-    def __iter__(self):
-        return self
-
-    def read_with_timeout(self, size):
-        try:
-            with Timeout(self.timeout):
-                chunk = self.obj_data.read(size)
-                self.cached_object.write(chunk)
-        except Timeout:
-            self.close()
-            raise
-        except Exception:
-            self.close()
-            raise
-
+    def _filter_put(self, chunk):
+        self.cached_object.write(chunk)
         return chunk
-
-    def next(self, size=64 * 1024):
-        if len(self.buf) < size:
-            self.buf += self.read_with_timeout(size - len(self.buf))
-            if self.buf == b'':
-                self.close()
-                raise StopIteration('Stopped iterator ex')
-
-        if len(self.buf) > size:
-            data = self.buf[:size]
-            self.buf = self.buf[size:]
-        else:
-            data = self.buf
-            self.buf = b''
-        return data
-
-    def _close_check(self):
-        if self.closed:
-            raise ValueError('I/O operation on closed file')
-
-    def read(self, size=64 * 1024):
-        self._close_check()
-        return self.next(size)
-
-    def readline(self, size=-1):
-        self._close_check()
-
-        # read data into self.buf if there is not enough data
-        while b'\n' not in self.buf and \
-              (size < 0 or len(self.buf) < size):
-            if size < 0:
-                chunk = self.read()
-            else:
-                chunk = self.read(size - len(self.buf))
-            if not chunk:
-                break
-            self.buf += chunk
-
-        # Retrieve one line from buf
-        data, sep, rest = self.buf.partition(b'\n')
-        data += sep
-        self.buf = rest
-
-        # cut out size from retrieved line
-        if size >= 0 and len(data) > size:
-            self.buf = data[size:] + self.buf
-            data = data[:size]
-
-        return data
-
-    def readlines(self, sizehint=-1):
-        self._close_check()
-        lines = []
-        try:
-            while True:
-                line = self.readline(sizehint)
-                if not line:
-                    break
-                lines.append(line)
-                if sizehint >= 0:
-                    sizehint -= len(line)
-                    if sizehint <= 0:
-                        break
-        except StopIteration:
-            pass
-        return lines
-
-    def close(self):
-        if self.closed:
-            return
-        self.obj_data.close()
-        self.cahed_object.close()
-        self.closed = True
-
-    def __del__(self):
-        self.close()
 
 
 class CacheObjectDescriptor(object):
