@@ -17,7 +17,7 @@ CHUNK_SIZE = 65536
 '''Check and control the data flow every interval'''
 SAMPLE_CONTROL_INTERVAL = 0.1
 MB = 1024*1024.
-'''Maximum throughout of a single node in the system (Gb Ethernet = 110MB (APPROX))'''
+'''Maximum throughput of a single node in the system (Gb Ethernet = 110MB (APPROX))'''
 BW_MAX = 115
 
 BEST_CHUNK_READ_TIME = 0.0002
@@ -304,7 +304,7 @@ class SSYNCBandwidthThreadControl(BandwidthThreadControl):
                     break
                 except Exception as e:
                     request_finished = True
-                    self.log.info("PAn unknown error occurred during "
+                    self.log.info("An unknown error occurred during "
                                   "transfer: " + str(e))
                     break
 
@@ -441,7 +441,7 @@ class BandwidthControl(object):
         self.global_conf = global_conf
         self.log = logger
 
-        # TODO: Load form filter_config
+        # TODO: Load from filter_config
         self.global_conf['rabbit_host'] = 'controller'
         self.global_conf['rabbit_port'] = 5672
         self.global_conf['rabbit_username'] = 'openstack'
@@ -496,7 +496,11 @@ class BandwidthControl(object):
 
         if self.server == "proxy":
             container = request.environ['PATH_INFO'].split('/')[3]
-            policy = int(request.environ['swift.container/'+tenant+'/'+container]['storage_policy'])
+
+            if 'swift.infocache' in request.environ:  # To work with Swift 2.11
+                policy = request.environ['swift.infocache']['container/' + tenant + '/' + container]['storage_policy']
+            else:
+                policy = int(request.environ['swift.container/'+tenant+'/'+container]['storage_policy'])
         else:
             policy = int(request.environ['HTTP_X_BACKEND_STORAGE_POLICY_INDEX'])
 
@@ -506,9 +510,11 @@ class BandwidthControl(object):
         if tenant not in self.tenant_request_thread:
             self.log.info("Crystal Filters - Bandwidth Differentiation Filter - Creating new "
                           "PUT thread for tenant " + tenant)
-            bw = self.redis.hgetall('bw:'+tenant)
-            if str(policy) in bw:
-                initial_bw = int(bw[str(policy)])
+
+            # bw = self.redis.hgetall('bw:'+tenant)  # old keyword
+            redis_bw = self.redis.get('SLO:bandwidth:put_bw:'+tenant+'#'+policy)  # new keyword!
+            if redis_bw is not None:
+                initial_bw = int(redis_bw)
             else:
                 initial_bw = BW_MAX
             thr = BandwidthThreadControl(self.log, initial_bw, self.server, 'PUT')
@@ -539,11 +545,18 @@ class BandwidthControl(object):
         if tenant not in self.tenant_response_thread:
             self.log.info("Crystal Filters - Bandwidth Differentiation Filter - Creating new "
                           "GET thread for tenant " + tenant)
-            bw = self.redis.hgetall('bw:'+tenant)
-            if str(policy) in bw:
-                initial_bw = int(bw[str(policy)])
+            # bw = self.redis.hgetall('bw:'+tenant)
+            # if str(policy) in bw:
+            #     initial_bw = int(bw[str(policy)])
+            # else:
+            #     initial_bw = BW_MAX
+
+            redis_bw = self.redis.get('SLO:bandwidth:get_bw:' + tenant + '#' + policy)  # new keyword!
+            if redis_bw is not None:
+                initial_bw = int(redis_bw)
             else:
                 initial_bw = BW_MAX
+
             thr = BandwidthThreadControl(self.log, initial_bw, self.server, 'GET')
             self.tenant_response_thread[tenant] = thr
             thr.daemon = True
@@ -589,7 +602,7 @@ class BandwidthControl(object):
             request.environ['wsgi.input'] = out_reader
 
     def _start_monitoring_producer(self):
-        self.log.info("Crystal Filters - Bandwidth Differentiation Filter - Strating monitoring "
+        self.log.info("Crystal Filters - Bandwidth Differentiation Filter - Starting monitoring "
                       "producer")
         channel = self.connection.channel()
         thbw_get = Thread(target=self.bwinfo_threaded,
@@ -687,7 +700,7 @@ class BandwidthControl(object):
         return tenant_bw
 
     def _start_assignments_consumer(self):
-        self.log.info("Crystal Filters - Bandwidth Differentiation Filter - Strating object "
+        self.log.info("Crystal Filters - Bandwidth Differentiation Filter - Starting object "
                       "storage assignments consumer")
         consumer_tag = self.global_conf.get('consumer_tag')
         queue_bw = consumer_tag + ":" + self.identifier
