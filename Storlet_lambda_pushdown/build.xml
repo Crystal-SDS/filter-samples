@@ -1,0 +1,28 @@
+<project>
+	
+	<target name="common">
+		<mkdir dir="bin" />
+	</target>
+
+	<target name="lambdapushdown">
+		<javac srcdir="Storlet_lambdapushdown/src/com/urv/storlet/lambdapushdown/" destdir="bin" includeantruntime="false">
+			<classpath>
+		        <pathelement path="lib/SCommon.jar"/>
+				<pathelement path="lib/lambdaFromString.jar"/>
+			</classpath>
+		</javac>
+
+		 <jar destfile="target/lambdapushdown-1.0.jar" 
+	          basedir="bin"
+	     	  includes="com/urv/storlet/lambdapushdown/*">
+		 	<zipgroupfileset dir="lib" includes="**/lambdaFromString.jar" />
+	     </jar>
+	</target>
+	
+	<target name="clean">
+		<delete dir="bin" />
+	</target>
+	
+	<target name="build" depends="clean, common, lambdapushdown"/>
+
+</project>

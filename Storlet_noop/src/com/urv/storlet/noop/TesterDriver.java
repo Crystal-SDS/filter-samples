@@ -10,7 +10,7 @@ import java.util.Map;
 
 public class TesterDriver {
 	
-	public static final String INPUT_FILE_NAME = "input/sample_3mb.csv";
+	public static final String INPUT_FILE_NAME = "input/meter_gen-20170206162236.csv";
 	public static final String OUTPUT_FILE_NAME = "input/sample_3mb.cp";
 	public static final String OUTPUT_MD_FILE_NAME = "input/output_md.txt";
 	public static final String LOGGER_FILE_NAME = "input/logger";	
