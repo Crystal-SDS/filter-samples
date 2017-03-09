@@ -555,7 +555,7 @@ class BandwidthControl(object):
             # else:
             #     initial_bw = BW_MAX
 
-            redis_bw = self.redis.get('SLO:bandwidth:get_bw:' + tenant + '#' + policy)  # new keyword!
+            redis_bw = self.redis.get('SLO:bandwidth:get_bw:' + tenant + '#' + str(policy))  # new keyword!
             if redis_bw is not None:
                 initial_bw = int(redis_bw)
             else:
@@ -593,7 +593,7 @@ class BandwidthControl(object):
                 # TODO: Return Response
                 self.log.info("Crystal Filters - Bandwidth Differentiation Filter -"
                               " replication_one_per_device parameter is"
-                              " setted to True: rejecting SSYNC /"+device+"/" +
+                              " set to True: rejecting SSYNC /"+device+"/" +
                               partition + " request")
         else:
 
