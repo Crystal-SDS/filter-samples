@@ -6,10 +6,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
-import com.ibm.storlet.common.StorletInputStream;
-import com.ibm.storlet.common.StorletLogger;
-import com.ibm.storlet.common.StorletObjectOutputStream;
-import com.ibm.storlet.common.StorletOutputStream;
+import org.openstack.storlet.common.StorletInputStream;
+import org.openstack.storlet.common.StorletLogger;
+import org.openstack.storlet.common.StorletObjectOutputStream;
+import org.openstack.storlet.common.StorletOutputStream;
 import com.urv.storlet.lambdastreams.examples.LambdaFilterGridPocketStorlet;
 import com.urv.storlet.lambdastreams.examples.LambdaNoopStorlet;
 
