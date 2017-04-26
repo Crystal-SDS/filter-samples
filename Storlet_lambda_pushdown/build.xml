@@ -5,20 +5,23 @@
 	</target>
 
 	<target name="lambdapushdown">
-		<javac srcdir="Storlet_lambdapushdown/src/com/urv/storlet/lambdapushdown/" destdir="bin" includeantruntime="false">
+		<javac srcdir="Storlet_lambda_pushdown/com/urv/storlet/lambdapushdown/" destdir="bin" includeantruntime="false">
 			<classpath>
 		        <pathelement path="lib/SCommon.jar"/>
 				<pathelement path="lib/lambdaFromString.jar"/>
+				<pathelement path="lib/compiler-2.0.jar"/>
 			</classpath>
 		</javac>
 
 		 <jar destfile="target/lambdapushdown-1.0.jar" 
-	          basedir="bin"
-	     	  includes="com/urv/storlet/lambdapushdown/*">
-		 	<zipgroupfileset dir="lib" includes="**/lambdaFromString.jar" />
+			 	basedir="bin"
+			 	includes="com/urv/storlet/lambdapushdown/*">
+		 	  <fileset dir="lib" includes="lambdaFromString.jar,compiler-2.0.jar" />
 	     </jar>
 	</target>
-	
+
+	  <!-- <zipgroupfileset dir="lib" includes="lambdaFromString.jar" />
+	  <zipgroupfileset dir="lib" includes="compiler-2.0.jar" /> -->
 	<target name="clean">
 		<delete dir="bin" />
 	</target>
