@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import main.java.pl.joegreen.lambdaFromString.LambdaFactory;
@@ -46,6 +48,8 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
 	//It acts as a cache of repeated lambdas to avoid compilation overhead of already compiled lambdas.
 	protected Map<String, Function<Stream<String>, Stream<String>>> lambdaCache = new HashMap<>();	
 	
+	Pattern lambdaBodyExtraction = Pattern.compile("(map|filter)\\s*?\\(");
+	
 	@Override
 	protected Stream<String> writeYourLambdas(Stream<String> stream) {
 		//list of functions to apply to each record
@@ -60,21 +64,24 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
         //Iterate over the parameters that describe the functions to the applied to the stream,
         //compile and instantiate the appropriate lambdas, and add them to the list.
         for (String functionKey: sortedMapKeys){	
-        	if ((!functionKey.matches("\\d-map")) && (!functionKey.matches("\\d-filter"))) 
-        		continue;
-        	String lambdaSignature = getLambdaSignature(functionKey, parameters.get(functionKey));
+        	//If there are no lambdas, continue
+        	if ((!functionKey.matches("\\d-lambda"))) continue;
+        	
+        	String lambdaSignature = parameters.get(functionKey);
         	System.err.println("**>>New lambda to pushdown: " + lambdaSignature);
 			if (!lambdaCache.containsKey(lambdaSignature)){
 				//We get a map to instantiate
-				if (functionKey.contains("map")){
+				if (lambdaSignature.startsWith("map")){
 					Function<String, String> mapFunction = lambdaFactory.createLambdaUnchecked(
-							parameters.get(functionKey), new TypeReference<Function<String, String>>() {});
+							getLambdaBody(parameters.get(functionKey)), 
+								new TypeReference<Function<String, String>>() {});
 					lambdaCache.put(lambdaSignature, (s) -> s.map(mapFunction));
 					System.err.println("Adding MAP function" + functionKey + " " + mapFunction);
 				//We get a filter to instantiate
 				}else if (functionKey.contains("filter")){				
 					Predicate<String> filterPredicate = lambdaFactory.createLambdaUnchecked(
-							parameters.get(functionKey), new TypeReference<Predicate<String>>() {});
+							getLambdaBody(parameters.get(functionKey)), 
+								new TypeReference<Predicate<String>>() {});
 					lambdaCache.put(lambdaSignature, (s) -> s.filter(filterPredicate));
 					System.err.println("Adding FILTER function" + functionKey + " " + filterPredicate);
 				}else System.err.println("Warning! Bad function pushdown headers!");	
@@ -92,12 +99,10 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
     	return allPushdownFunctions.apply(stream);
 	}	
 	
-	private String getLambdaSignature(String key, String content) {
-		if (key.contains("map"))
-			return "map(" + content.trim().replace(" ", "") + ")"; 
-		if (key.contains("filter"))
-			return "filter(" + content.trim().replace(" ", "") + ")"; 
-		System.err.println("WARNING! Returning null signature!");
-		return null;
+	private String getLambdaBody(String lambdaDefinition) {
+		Matcher matcher = lambdaBodyExtraction.matcher(lambdaDefinition);
+		if(!matcher.find())  
+			System.err.println("No match looking for lambda body!");
+		return lambdaDefinition.substring(matcher.end(), lambdaDefinition.lastIndexOf(")"));
 	}
 }
