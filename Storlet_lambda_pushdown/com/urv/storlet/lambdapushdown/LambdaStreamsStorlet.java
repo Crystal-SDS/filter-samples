@@ -32,8 +32,8 @@ import com.ibm.storlet.common.StorletOutputStream;
 
 public abstract class LambdaStreamsStorlet implements IStorlet {
 	
-	private final Charset CHARSET = Charset.forName("UTF-8");
-	private final int BUFFER_SIZE = 64*1024;
+	protected final Charset CHARSET = Charset.forName("UTF-8");
+	protected final int BUFFER_SIZE = 64*1024;
 	
 	protected Map<String, String> parameters = null;
 	
@@ -50,7 +50,8 @@ public abstract class LambdaStreamsStorlet implements IStorlet {
 	 * @param Raw data stream
 	 * @return Processed data stream
 	 */	
-	protected abstract Stream<String> writeYourLambdas(Stream<String> stream);
+	@SuppressWarnings("rawtypes")
+	protected abstract Stream writeYourLambdas(Stream<String> stream);
 	
 	/***
 	 * Storlet invoke method. 
@@ -71,19 +72,24 @@ public abstract class LambdaStreamsStorlet implements IStorlet {
 		OutputStream os = sos.getStream();
 		sos.setMetadata(metadata);
 		
-		//Store this variable inside the object to exploit dynamic lambdas passed as parameters
-		this.parameters = parameters;
-		
 		//TODO: Performance problem here: We are dealing with characters, not bytes, so we use
 		//BufferedWriter/Reader. This is convenient for executing lambdas, but we get worse
 		//performance compared to managing input/output streams in bytes.
+		applyLambdasOnDataStream(is, os, logger);
+		
+        long after = System.nanoTime();
+		logger.emitLog(this.getClass().getName() + " -- Elapsed [ms]: "+((after-before)/1000000L));		
+	}	
+	
+	@SuppressWarnings("unchecked")
+	protected void applyLambdasOnDataStream(InputStream is, OutputStream os, StorletLogger logger) {
 		try{
 			//Convert InputStream as a Stream, and apply lambdas
 			BufferedWriter writeBuffer = new BufferedWriter(new OutputStreamWriter(os, CHARSET), BUFFER_SIZE);
 			BufferedReader readBuffer = new BufferedReader(new InputStreamReader(is, CHARSET), BUFFER_SIZE); 
 			writeYourLambdas(readBuffer.lines()).forEach(line -> {	
 				try {
-					writeBuffer.write(line);
+					writeBuffer.write(line.toString());  
 					writeBuffer.newLine();
 				}catch(IOException e){
 					logger.emitLog(this.getClass().getName() + " raised IOException: " + e.getMessage());
@@ -97,7 +103,5 @@ public abstract class LambdaStreamsStorlet implements IStorlet {
 			logger.emitLog(this.getClass().getName() + " raised IOException 2: " + e1.getMessage());
 			e1.printStackTrace(System.err);
 		}		
-        long after = System.nanoTime();
-		logger.emitLog(this.getClass().getName() + " -- Elapsed [ms]: "+((after-before)/1000000L));		
-	}	
+	}
 }

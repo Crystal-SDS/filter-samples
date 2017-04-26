@@ -42,7 +42,7 @@ public class TestStorlet {
 			StorletLogger logger = new StorletLogger(loggerFile.getFD());				
 			Map<String, String> parameters = new HashMap<String, String>();	
 			
-			parameters.put("1-lambda", "map(s -> s)");
+			parameters.put("1-lambda", "java.util.function.Predicate<java.lang.String>|filter(s -> s.contains(\"Hamlet\"))");
 			//parameters.put("2-map", "s -> s + \"1234563564545\"");
 			//parameters.put("3-filter", "s -> s.contains(\"B\")");	
 			//parameters.put("4-map", "s -> s + \"aaaaaaaa\"");
