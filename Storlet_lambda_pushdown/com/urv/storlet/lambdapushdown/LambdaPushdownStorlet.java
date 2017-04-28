@@ -69,14 +69,20 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
 	//private Pattern terminalLambdas = Pattern.compile("(collect|count)");
 	
 	private static final String LAMBDA_TYPE_AND_BODY_SEPARATOR = "|";
+	//TODO: There is a problem using "," when passing lambdas as Storlet parameters, as the
+	//Storlet middleware treats every "," as a separation between key/value parameter pairs
+	private static final String COMMA_REPLACEMENT_IN_PARAMS = "'";
 	
 	public LambdaPushdownStorlet() {
-		new CollectorCompilationHelper().initializeCollectorCache(collectorCache);
+		new CollectorCompilationHelper().initializeCollectorCache(collectorCache); 
 	}
 
 	@Override
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	protected Stream writeYourLambdas(Stream<String> stream) {
+
+		System.err.println(">>>>>>>>>>>>>>> writeYourLambdas!!!");
+		
 		long initime = System.currentTimeMillis();
 		//list of functions to apply to each record
         List<Function<Stream, Stream>> pushdownFunctions = new ArrayList<>();
@@ -95,13 +101,13 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
         	if ((!functionKey.matches("\\d-lambda"))) continue;
         	
         	//Get the signature of the function to compile
-        	String lambdaTypeAndBody = parameters.get(functionKey);
+        	String lambdaTypeAndBody = parameters.get(functionKey).replace(COMMA_REPLACEMENT_IN_PARAMS, ",");
         	String lambdaType = lambdaTypeAndBody.substring(0, 
         			lambdaTypeAndBody.indexOf(LAMBDA_TYPE_AND_BODY_SEPARATOR));
         	String lambdaBody = lambdaTypeAndBody.substring(
         			lambdaTypeAndBody.indexOf(LAMBDA_TYPE_AND_BODY_SEPARATOR)+1);
-        	System.out.println(lambdaTypeAndBody);
-        	System.out.println("**>>New lambda to pushdown: " + lambdaType + " ->>> " + lambdaBody);
+        	System.err.println(lambdaTypeAndBody);
+        	System.err.println("**>>New lambda to pushdown: " + lambdaType + " ->>> " + lambdaBody);
         	
         	//Check if we have already compiled this lambda and exists in the cache
 			if (lambdaCache.containsKey(lambdaBody)) {
@@ -124,13 +130,13 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
 				pushdownFunctions.add(lambdaCache.get(lambdaBody));
 			}
         }
-        System.out.println("Number of lambdas to execute: " + pushdownFunctions.size());
+        System.err.println("Number of lambdas to execute: " + pushdownFunctions.size());
         
         //Concatenate all the functions to be applied to a data stream
         Function allPushdownFunctions = pushdownFunctions.stream()
         		.reduce(c -> c, (c1, c2) -> (s -> c2.apply(c1.apply(s))));        
 
-        System.out.println("Compilation time: " + (System.currentTimeMillis()-initime) + "ms");
+        System.err.println("Compilation time: " + (System.currentTimeMillis()-initime) + "ms");
         
         //Apply all the functions on each stream record
     	return hasTerminalLambda ? applyTerminalOperation((Stream) allPushdownFunctions.apply(stream), 
@@ -143,8 +149,6 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
 			
 		long before = System.nanoTime();
 		logger.emitLog("----- Init " + this.getClass().getName() + " -----");
-		System.out.println(">>>>>>>>>>>>>>> INVOKE LAMBDA PUSHDOWN STORLET!!!");
-		System.out.println(">>>>>>>>>>>>>>> " + parameters.toString());
 		System.err.println(">>>>>>>>>>>>>>> INVOKE LAMBDA PUSHDOWN STORLET!!!");
 		System.err.println(">>>>>>>>>>>>>>> " + parameters.toString());
 		
@@ -189,6 +193,7 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
 			writeBuffer.close();
 			is.close();
 			os.close();
+			System.err.println(">>>>>>>>>>> Finishing writing with lambdas!!");
 		} catch (IOException e1) {
 			logger.emitLog(this.getClass().getName() + " raised IOException 2: " + e1.getMessage());
 			e1.printStackTrace(System.err);
