@@ -24,12 +24,27 @@ public class SupportedLambdaTypes {
 				new TypeReference<Function<Integer, String>>(){});
 		supportedMapTypes.put("java.util.function.Function<java.lang.Integer, java.lang.Integer>", 
 				new TypeReference<Function<Integer, Integer>>(){});
+		supportedMapTypes.put("java.util.function.Function<java.lang.Long, java.lang.String>", 
+				new TypeReference<Function<Long, String>>(){});
+		supportedMapTypes.put("java.util.function.Function<java.lang.String, java.lang.Long>", 
+				new TypeReference<Function<String, Long>>(){});
+		supportedMapTypes.put("java.util.function.Function<java.lang.Long, java.lang.Long>", 
+				new TypeReference<Function<Long, Long>>(){});
+		supportedMapTypes.put("java.util.function.Function<java.lang.Integer, java.lang.Long>", 
+				new TypeReference<Function<Integer, Long>>(){});
+		supportedMapTypes.put("java.util.function.Function<java.lang.Long, java.lang.Integer>", 
+				new TypeReference<Function<Long, Integer>>(){});
+		
 		supportedMapTypes.put("java.util.function.Function<java.lang.String, java.util.AbstractMap.SimpleEntry<java.lang.String, java.lang.Long>>", 
 				new TypeReference<Function<String, SimpleEntry<String, Long>>>(){});
+		supportedMapTypes.put("java.util.function.Function<java.lang.String, java.util.AbstractMap.SimpleEntry<java.lang.String, java.lang.Integer>>", 
+				new TypeReference<Function<String, SimpleEntry<String, Integer>>>(){});
 		
 		supportedFilterTypes.put("java.util.function.Predicate<java.lang.String>", 
 				new TypeReference<Predicate<String>>() {});
 		supportedFilterTypes.put("java.util.function.Predicate<java.lang.Integer>", 
+				new TypeReference<Predicate<Integer>>() {});
+		supportedFilterTypes.put("java.util.function.Predicate<java.lang.Long>", 
 				new TypeReference<Predicate<Integer>>() {});
 		supportedFilterTypes.put("java.util.function.Predicate<java.util.AbstractMap.SimpleEntry<java.lang.String, java.lang.Long>>", 
 				new TypeReference<Predicate<SimpleEntry<String, Long>>>() {});
