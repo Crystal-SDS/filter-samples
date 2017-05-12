@@ -107,7 +107,7 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
         			lambdaTypeAndBody.indexOf(LAMBDA_TYPE_AND_BODY_SEPARATOR));
         	String lambdaBody = lambdaTypeAndBody.substring(
         			lambdaTypeAndBody.indexOf(LAMBDA_TYPE_AND_BODY_SEPARATOR)+1);
-        	System.out.println("**>>New lambda to pushdown: " + lambdaType + " ->>> " + lambdaBody);
+        	System.err.println("**>>New lambda to pushdown: " + lambdaType + " ->>> " + lambdaBody);
         	
         	//Check if we have already compiled this lambda and exists in the cache
 			if (lambdaCache.containsKey(lambdaBody)) {
@@ -138,13 +138,13 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
 				pushdownFunctions.add(lambdaCache.get(lambdaBody));
 			}
         }
-        System.out.println("Number of lambdas to execute: " + pushdownFunctions.size());
+        System.err.println("Number of lambdas to execute: " + pushdownFunctions.size());
         
         //Concatenate all the functions to be applied to a data stream
         Function allPushdownFunctions = pushdownFunctions.stream()
         		.reduce(c -> c, (c1, c2) -> (s -> c2.apply(c1.apply(s))));        
 
-        System.out.println("Compilation time: " + (System.currentTimeMillis()-initime) + "ms");
+        System.err.println("Compilation time: " + (System.currentTimeMillis()-initime) + "ms");
         Stream<Object> potentialTerminals = Arrays.asList((Object) pushdownCollector, 
         												  (Object) pushdownReducer).stream();
         
