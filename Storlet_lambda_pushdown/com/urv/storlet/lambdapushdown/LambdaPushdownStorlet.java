@@ -104,7 +104,7 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
         	
         	//Get the signature of the function to compile
         	String lambdaTypeAndBody = parameters.get(functionKey).replace(COMMA_REPLACEMENT_IN_PARAMS, ",")
-        														  .replace(EQUAL_REPLACEMENT_IN_PARAMS, ",");
+        														  .replace(EQUAL_REPLACEMENT_IN_PARAMS, "=");
         	String lambdaType = lambdaTypeAndBody.substring(0, 
         			lambdaTypeAndBody.indexOf(LAMBDA_TYPE_AND_BODY_SEPARATOR));
         	String lambdaBody = lambdaTypeAndBody.substring(
