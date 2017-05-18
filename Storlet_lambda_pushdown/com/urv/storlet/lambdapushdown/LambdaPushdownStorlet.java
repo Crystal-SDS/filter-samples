@@ -75,6 +75,7 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
 	//TODO: There is a problem using "," when passing lambdas as Storlet parameters, as the
 	//Storlet middleware treats every "," as a separation between key/value parameter pairs
 	private static final String COMMA_REPLACEMENT_IN_PARAMS = "'";
+	private static final String EQUAL_REPLACEMENT_IN_PARAMS = "$";
 	
 	public LambdaPushdownStorlet() {
 		new CollectorCompilationHelper().initializeCollectorCache(collectorCache);
@@ -102,7 +103,8 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
         	if ((!functionKey.matches("\\d-lambda"))) continue;
         	
         	//Get the signature of the function to compile
-        	String lambdaTypeAndBody = parameters.get(functionKey).replace(COMMA_REPLACEMENT_IN_PARAMS, ",");
+        	String lambdaTypeAndBody = parameters.get(functionKey).replace(COMMA_REPLACEMENT_IN_PARAMS, ",")
+        														  .replace(EQUAL_REPLACEMENT_IN_PARAMS, ",");
         	String lambdaType = lambdaTypeAndBody.substring(0, 
         			lambdaTypeAndBody.indexOf(LAMBDA_TYPE_AND_BODY_SEPARATOR));
         	String lambdaBody = lambdaTypeAndBody.substring(
