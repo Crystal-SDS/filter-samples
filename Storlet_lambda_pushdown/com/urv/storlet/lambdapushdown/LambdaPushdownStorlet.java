@@ -30,8 +30,8 @@ import org.openstack.storlet.common.StorletLogger;
 import org.openstack.storlet.common.StorletObjectOutputStream;
 import org.openstack.storlet.common.StorletOutputStream;
 
-import main.java.pl.joegreen.lambdaFromString.LambdaFactory;
-import main.java.pl.joegreen.lambdaFromString.TypeReference;
+import pl.joegreen.lambdaFromString.LambdaFactory;
+import pl.joegreen.lambdaFromString.TypeReference;
 
 /**
  * 
@@ -287,16 +287,16 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
 		String methodName = lambdaSignature.substring(0, lambdaSignature.indexOf("("));	
 		Function function = null;
 		try {
-			//Get the method to invoke via reflection
-			Method theMethod = Stream.class.getMethod(methodName, Class.forName(
-					lambdaType.substring(0, lambdaType.indexOf("<"))));
+			//Get the method to invoke via reflection			
+			Method theMethod = getMethodInvocation(methodName, lambdaType);			
 			function = (s) -> {						
 				try {
-					System.out.println(lambdaSignature);
-					return theMethod.invoke(((Stream) s), lambdaFactory.createLambdaUnchecked(
+					System.out.println("Goingto execute: " + lambdaSignature + " " + theMethod.getParameterCount());
+					return (theMethod.getParameterCount()==0)? theMethod.invoke(((Stream) s)):
+						theMethod.invoke(((Stream) s), lambdaFactory.createLambdaUnchecked(
 						getLambdaBody(lambdaSignature), getLambdaType(methodName, lambdaType)));
 				} catch (IllegalAccessException|InvocationTargetException e) {
-					System.err.println("Error invoking a pushdown method on the Stream class.");
+					System.err.println("Error invoking a pushdown method on the Stream class: " + lambdaSignature);
 					e.printStackTrace();
 				}
 				return null;		
@@ -309,6 +309,16 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
 		return function;
 	}
 	
+	private Method getMethodInvocation(String methodName, String lambdaType) 
+			throws NoSuchMethodException, SecurityException, ClassNotFoundException {
+		Method theMethod = null;
+		if (lambdaType.equals("None<>")) {
+			theMethod = Stream.class.getMethod(methodName);
+		}else theMethod = Stream.class.getMethod(methodName, Class.forName(
+					lambdaType.substring(0, lambdaType.indexOf("<")))); 
+		return theMethod;
+	}
+
 	@SuppressWarnings({"rawtypes"})
 	private Collector getCollectorObject(String lambdaSignature, String lambdaType) {
 		Collector function = null;
