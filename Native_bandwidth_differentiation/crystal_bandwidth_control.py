@@ -2,6 +2,7 @@ from threading import Thread
 from eventlet import Timeout
 from swift.common.swob import Request
 from swift.common.swob import Response
+from swift.common.request_helpers import SegmentedIterable
 import eventlet
 import select
 import Queue
@@ -213,6 +214,9 @@ class BandwidthThreadControl(Thread):
                 to different devices,provide to each request a proportional
                 number of chunk transfer operations
                 '''
+
+                if isinstance(reader, SegmentedIterable):
+                    reader = reader.app_iter
 
                 proportional_device_bw = 32
 
