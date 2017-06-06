@@ -248,6 +248,10 @@ class BandwidthThreadControl(Thread):
                         self.log.info("An unknown error occurred during "
                                       "transfer: " + str(e))
                         break
+                    except Timeout as e:
+                        request_finished = True
+                        self.log.info("Timeout occurred during transfer: " + str(e))
+                        break
 
                 if not request_finished:
                     self.stream_pipe_queue.put(stream_data)
