@@ -62,9 +62,10 @@ import pl.joegreen.lambdaFromString.TypeReference;
 public class LambdaPushdownStorlet implements IStorlet {
 	
 	protected final Charset CHARSET = Charset.forName("UTF-8");
-	protected final int BUFFER_SIZE = 8*1024;
+	protected final int BUFFER_SIZE = 128*1024;
 	
 	protected Map<String, String> parameters = null;
+	private StorletLogger logger;
 	
 	protected LambdaFactory lambdaFactory = LambdaFactory.get();
 	
@@ -77,7 +78,8 @@ public class LambdaPushdownStorlet implements IStorlet {
 	private Pattern lambdaBodyExtraction = Pattern.compile("(map|filter|flatMap|collect|reduce)\\s*?\\(");
 	
 	private static final String LAMBDA_TYPE_AND_BODY_SEPARATOR = "|";
-	//TODO: There is a problem using "," when passing lambdas as Storlet parameters, as the
+	
+	//There is a problem using "," when passing lambdas as Storlet parameters, as the
 	//Storlet middleware treats every "," as a separation between key/value parameter pairs
 	private static final String COMMA_REPLACEMENT_IN_PARAMS = "'";
 	private static final String EQUAL_REPLACEMENT_IN_PARAMS = "$";
@@ -112,7 +114,7 @@ public class LambdaPushdownStorlet implements IStorlet {
         	int separatorPos = lambdaTypeAndBody.indexOf(LAMBDA_TYPE_AND_BODY_SEPARATOR);
         	String lambdaType = lambdaTypeAndBody.substring(0, separatorPos);
         	String lambdaBody = lambdaTypeAndBody.substring(separatorPos+1);
-        	//System.err.println("**>>New lambda to pushdown: " + lambdaType + " ->>> " + lambdaBody);
+        	logger.emitLog("**>>New lambda to pushdown: " + lambdaType + " ->>> " + lambdaBody);
         	
         	//Check if we have already compiled this lambda and exists in the cache
 			if (lambdaCache.containsKey(lambdaBody)) {
@@ -143,7 +145,7 @@ public class LambdaPushdownStorlet implements IStorlet {
 				pushdownFunctions.add(lambdaCache.get(lambdaBody));
 			}
         }
-        //System.err.println("Number of lambdas to execute: " + pushdownFunctions.size());
+        logger.emitLog("Number of lambdas to execute: " + pushdownFunctions.size());
         
         //Avoid overhead of composing functions
         if (pushdownFunctions.size()==0 && !hasTerminalLambda) return stream;
@@ -152,8 +154,7 @@ public class LambdaPushdownStorlet implements IStorlet {
         Function allPushdownFunctions = pushdownFunctions.stream()
         		.reduce(c -> c, (c1, c2) -> (s -> c2.apply(c1.apply(s))));   
         Stream<Object> potentialTerminals = Arrays.asList(pushdownCollector, pushdownReducer).stream();
-
-        //System.err.println("Compilation time: " + (System.currentTimeMillis()-initime) + "ms");
+        logger.emitLog("Compilation time: " + (System.currentTimeMillis()-initime) + "ms");
         
         //Apply all the functions on each stream record
     	return hasTerminalLambda ? applyTerminalOperation((Stream) allPushdownFunctions.apply(stream), 
@@ -177,21 +178,22 @@ public class LambdaPushdownStorlet implements IStorlet {
 		sos.setMetadata(metadata);
 		
 		this.parameters = parameters;
+		this.logger = logger;
 		
 		//To improve performance, we have a bimodal way of writing streams. If we have lambdas,
 		//execute those lambdas on BufferedWriter/Readers, as we need to operate on text and
 		//do the encoding from bytes to strings. If there are no lambdas, we can directly manage
 		//byte streams, having much better throughput.
 		if (requestContainsLambdas(parameters)){
-			applyLambdasOnDataStream(is, os, logger);
-		} else writeByteBasedStreams(is, os, logger); 
+			applyLambdasOnDataStream(is, os);
+		} else writeByteBasedStreams(is, os); 
 		
         long after = System.nanoTime();
 		logger.emitLog(this.getClass().getName() + " -- Elapsed [ms]: "+((after-before)/1000000L));			
 	}
 	
 	@SuppressWarnings("unchecked")
-	protected void applyLambdasOnDataStream(InputStream is, OutputStream os, StorletLogger logger) {
+	protected void applyLambdasOnDataStream(InputStream is, OutputStream os) {
 		try{
 			//Convert InputStream as a Stream, and apply lambdas
 			BufferedWriter writeBuffer = new BufferedWriter(new OutputStreamWriter(os, CHARSET), BUFFER_SIZE);
@@ -208,7 +210,6 @@ public class LambdaPushdownStorlet implements IStorlet {
 			writeBuffer.close();
 			is.close();
 			os.close();
-			//System.err.println(">>>>>>>>>>> Finishing writing with lambdas!!");
 		} catch (IOException e1) {
 			logger.emitLog(this.getClass().getName() + " raised IOException 2: " + e1.getMessage());
 			e1.printStackTrace(System.err);
@@ -261,7 +262,7 @@ public class LambdaPushdownStorlet implements IStorlet {
 		return Stream.of("");
 	}
 
-	private void writeByteBasedStreams(InputStream is, OutputStream os, StorletLogger logger) {
+	private void writeByteBasedStreams(InputStream is, OutputStream os) {
 		byte[] buffer = new byte[BUFFER_SIZE];
 		int len;		
 		try {				
