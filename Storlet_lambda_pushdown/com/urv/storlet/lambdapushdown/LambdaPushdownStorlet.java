@@ -9,6 +9,7 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -24,11 +25,12 @@ import java.util.regex.Pattern;
 import java.util.stream.Collector;
 import java.util.stream.Stream;
 
-import org.openstack.storlet.common.StorletException;
-import org.openstack.storlet.common.StorletInputStream;
-import org.openstack.storlet.common.StorletLogger;
-import org.openstack.storlet.common.StorletObjectOutputStream;
-import org.openstack.storlet.common.StorletOutputStream;
+import com.ibm.storlet.common.IStorlet;
+import com.ibm.storlet.common.StorletException;
+import com.ibm.storlet.common.StorletInputStream;
+import com.ibm.storlet.common.StorletLogger;
+import com.ibm.storlet.common.StorletObjectOutputStream;
+import com.ibm.storlet.common.StorletOutputStream;
 
 import pl.joegreen.lambdaFromString.LambdaFactory;
 import pl.joegreen.lambdaFromString.TypeReference;
@@ -57,7 +59,12 @@ import pl.joegreen.lambdaFromString.TypeReference;
  *
  */
 
-public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
+public class LambdaPushdownStorlet implements IStorlet {
+	
+	protected final Charset CHARSET = Charset.forName("UTF-8");
+	protected final int BUFFER_SIZE = 8*1024;
+	
+	protected Map<String, String> parameters = null;
 	
 	protected LambdaFactory lambdaFactory = LambdaFactory.get();
 	
@@ -68,8 +75,6 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
 	protected Map<String, Function> reducerCache = new HashMap<>();
 	
 	private Pattern lambdaBodyExtraction = Pattern.compile("(map|filter|flatMap|collect|reduce)\\s*?\\(");
-	//private Pattern intermediateLambdas = Pattern.compile("(map|filter|flatMap|collect|mapToPair|reduceByKey)");
-	//private Pattern terminalLambdas = Pattern.compile("(collect|count)");
 	
 	private static final String LAMBDA_TYPE_AND_BODY_SEPARATOR = "|";
 	//TODO: There is a problem using "," when passing lambdas as Storlet parameters, as the
@@ -81,7 +86,6 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
 		new CollectorCompilationHelper().initializeCollectorCache(collectorCache);
 	}
 
-	@Override
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	protected Stream writeYourLambdas(Stream<String> stream) {
 		long initime = System.currentTimeMillis();
@@ -105,11 +109,10 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
         	//Get the signature of the function to compile
         	String lambdaTypeAndBody = parameters.get(functionKey).replace(COMMA_REPLACEMENT_IN_PARAMS, ",")
         														  .replace(EQUAL_REPLACEMENT_IN_PARAMS, "=");
-        	String lambdaType = lambdaTypeAndBody.substring(0, 
-        			lambdaTypeAndBody.indexOf(LAMBDA_TYPE_AND_BODY_SEPARATOR));
-        	String lambdaBody = lambdaTypeAndBody.substring(
-        			lambdaTypeAndBody.indexOf(LAMBDA_TYPE_AND_BODY_SEPARATOR)+1);
-        	System.err.println("**>>New lambda to pushdown: " + lambdaType + " ->>> " + lambdaBody);
+        	int separatorPos = lambdaTypeAndBody.indexOf(LAMBDA_TYPE_AND_BODY_SEPARATOR);
+        	String lambdaType = lambdaTypeAndBody.substring(0, separatorPos);
+        	String lambdaBody = lambdaTypeAndBody.substring(separatorPos+1);
+        	//System.err.println("**>>New lambda to pushdown: " + lambdaType + " ->>> " + lambdaBody);
         	
         	//Check if we have already compiled this lambda and exists in the cache
 			if (lambdaCache.containsKey(lambdaBody)) {
@@ -140,15 +143,17 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
 				pushdownFunctions.add(lambdaCache.get(lambdaBody));
 			}
         }
-        System.err.println("Number of lambdas to execute: " + pushdownFunctions.size());
+        //System.err.println("Number of lambdas to execute: " + pushdownFunctions.size());
+        
+        //Avoid overhead of composing functions
+        if (pushdownFunctions.size()==0 && !hasTerminalLambda) return stream;
         
         //Concatenate all the functions to be applied to a data stream
         Function allPushdownFunctions = pushdownFunctions.stream()
-        		.reduce(c -> c, (c1, c2) -> (s -> c2.apply(c1.apply(s))));        
+        		.reduce(c -> c, (c1, c2) -> (s -> c2.apply(c1.apply(s))));   
+        Stream<Object> potentialTerminals = Arrays.asList(pushdownCollector, pushdownReducer).stream();
 
-        System.err.println("Compilation time: " + (System.currentTimeMillis()-initime) + "ms");
-        Stream<Object> potentialTerminals = Arrays.asList((Object) pushdownCollector, 
-        												  (Object) pushdownReducer).stream();
+        //System.err.println("Compilation time: " + (System.currentTimeMillis()-initime) + "ms");
         
         //Apply all the functions on each stream record
     	return hasTerminalLambda ? applyTerminalOperation((Stream) allPushdownFunctions.apply(stream), 
@@ -193,8 +198,7 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
 			BufferedReader readBuffer = new BufferedReader(new InputStreamReader(is, CHARSET), BUFFER_SIZE); 
 			writeYourLambdas(readBuffer.lines().parallel()).forEach(line -> {	
 				try {
-					//FIXME: We have to call toString here to write a String from unknown Stream items
-					writeBuffer.write(line.toString());  
+					writeBuffer.write(line.toString());  //As we handle different types of object, invoke toString
 					writeBuffer.newLine();
 				}catch(IOException e){
 					logger.emitLog(this.getClass().getName() + " raised IOException: " + e.getMessage());
@@ -204,7 +208,7 @@ public class LambdaPushdownStorlet extends LambdaStreamsStorlet {
 			writeBuffer.close();
 			is.close();
 			os.close();
-			System.err.println(">>>>>>>>>>> Finishing writing with lambdas!!");
+			//System.err.println(">>>>>>>>>>> Finishing writing with lambdas!!");
 		} catch (IOException e1) {
 			logger.emitLog(this.getClass().getName() + " raised IOException 2: " + e1.getMessage());
 			e1.printStackTrace(System.err);
