@@ -53,8 +53,8 @@ import pl.joegreen.lambdaFromString.TypeReference;
  * 
  * Such functionality can enable frameworks like Spark to intelligently delegate
  * computations, such as data filtering and transformations, to the Swift cluster,
- * making the analytics jobs much faster. This storlet relies on the LambdaStreamsStorlet
- * to do the byte-level in/out streams conversion to Java 8 Streams.
+ * making the analytics jobs much faster. This storlet does the byte-level in/out 
+ * streams conversion into Java 8 Streams.
  * 
  * @author Raul Gracia
  *
@@ -188,6 +188,7 @@ public class LambdaPushdownStorlet implements IStorlet {
 			applyLambdasOnDataStream(is, os);
 		} else writeByteBasedStreams(is, os); 
 		
+        this.logger = null;
         long after = System.nanoTime();
 		logger.emitLog(this.getClass().getName() + " -- Elapsed [ms]: "+((after-before)/1000000L));			
 	}
