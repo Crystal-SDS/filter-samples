@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -114,7 +115,6 @@ public class LambdaPushdownStorlet implements IStorlet {
         	int separatorPos = lambdaTypeAndBody.indexOf(LAMBDA_TYPE_AND_BODY_SEPARATOR);
         	String lambdaType = lambdaTypeAndBody.substring(0, separatorPos);
         	String lambdaBody = lambdaTypeAndBody.substring(separatorPos+1);
-        	logger.emitLog("**>>New lambda to pushdown: " + lambdaType + " ->>> " + lambdaBody);
         	
         	//Check if we have already compiled this lambda and exists in the cache
 			if (lambdaCache.containsKey(lambdaBody)) {
@@ -194,14 +194,18 @@ public class LambdaPushdownStorlet implements IStorlet {
 	
 	@SuppressWarnings("unchecked")
 	protected void applyLambdasOnDataStream(InputStream is, OutputStream os) {
+		AtomicLong inputBytes = new AtomicLong(); 
+		long iniTime = System.nanoTime();
 		try{
 			//Convert InputStream as a Stream, and apply lambdas
 			BufferedWriter writeBuffer = new BufferedWriter(new OutputStreamWriter(os, CHARSET), BUFFER_SIZE);
 			BufferedReader readBuffer = new BufferedReader(new InputStreamReader(is, CHARSET), BUFFER_SIZE); 
 			writeYourLambdas(readBuffer.lines().parallel()).forEach(line -> {	
 				try {
-					writeBuffer.write(line.toString());  //As we handle different types of object, invoke toString
+					String lineString = line.toString();
+					writeBuffer.write(lineString);  //As we handle different types of object, invoke toString
 					writeBuffer.newLine();
+					inputBytes.getAndAdd(lineString.length());
 				}catch(IOException e){
 					logger.emitLog(this.getClass().getName() + " raised IOException: " + e.getMessage());
 					e.printStackTrace(System.err);
@@ -214,6 +218,9 @@ public class LambdaPushdownStorlet implements IStorlet {
 			logger.emitLog(this.getClass().getName() + " raised IOException 2: " + e1.getMessage());
 			e1.printStackTrace(System.err);
 		}		
+		logger.emitLog("STREAMS BW: " + ((inputBytes.get()/1024./1024.) + " MB /" +
+				((System.nanoTime()-iniTime)/1000000000.)) + " secs = " + ((inputBytes.get()/1024./1024.)/
+						((System.nanoTime()-iniTime)/1000000000.)) + " MBps");
 	}
 	
 	/**
@@ -264,16 +271,19 @@ public class LambdaPushdownStorlet implements IStorlet {
 
 	private void writeByteBasedStreams(InputStream is, OutputStream os) {
 		byte[] buffer = new byte[BUFFER_SIZE];
-		int len;		
+		int len, inputBytes = 0;	
+		long iniTime = System.nanoTime();
 		try {				
 			while((len=is.read(buffer)) != -1) {
 				os.write(buffer, 0, len);
+				inputBytes+=len;
 			}
 			is.close();
 			os.close();
 		} catch (IOException e) {
 			logger.emitLog(this.getClass().getName() + " raised IOException: " + e.getMessage());
 		}		
+		logger.emitLog("NOOP BW: " + ((inputBytes/1024./1024.)/((System.nanoTime()-iniTime)/1000000000.)) + "MBps");
 	}
 
 	private boolean requestContainsLambdas(Map<String, String> parameters) {
