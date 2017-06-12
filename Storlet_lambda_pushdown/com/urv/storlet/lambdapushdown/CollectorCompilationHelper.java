@@ -56,18 +56,20 @@ public class CollectorCompilationHelper {
 	 * @param collectorCacheBuilder
 	 */
 	void initializeCollectorCache(Map<String, Collector> collectorCacheBuilder) {
-		collectorCacheBuilder.put("collect(Collectors.toList())", Collectors.toList());
-		collectorCacheBuilder.put("collect(Collectors.toSet())", Collectors.toSet());
-		collectorCacheBuilder.put("collect(Collectors.maxBy(String::compareTo))", Collectors.maxBy(String::compareTo));
-		collectorCacheBuilder.put("collect(Collectors.maxBy(Integer::compareTo))", Collectors.maxBy(Integer::compareTo));
-		collectorCacheBuilder.put("collect(Collectors.maxBy(Long::compareTo))", Collectors.maxBy(Long::compareTo));
-		collectorCacheBuilder.put("collect(Collectors.minBy(String::compareTo))", Collectors.minBy(String::compareTo));
-		collectorCacheBuilder.put("collect(Collectors.minBy(Integer::compareTo))", Collectors.minBy(Integer::compareTo));
-		collectorCacheBuilder.put("collect(Collectors.minBy(Long::compareTo))", Collectors.minBy(Long::compareTo));		
-		collectorCacheBuilder.put("collect(Collectors.groupingBy(SimpleEntry<String, Long>::getKey, Collectors.counting()))", 
-				Collectors.groupingBy(SimpleEntry<String, Long>::getKey, Collectors.counting()));
-		collectorCacheBuilder.put("collect(Collectors.groupingBy(SimpleEntry<String, Integer>::getKey, Collectors.counting())", 
+		collectorCacheBuilder.put("collect(java.util.stream.Collectors.toList())", Collectors.toList());
+		collectorCacheBuilder.put("collect(java.util.stream.Collectors.toSet())", Collectors.toSet());
+		collectorCacheBuilder.put("collect(java.util.stream.Collectors.maxBy(String::compareTo))", Collectors.maxBy(String::compareTo));
+		collectorCacheBuilder.put("collect(java.util.stream.Collectors.maxBy(Integer::compareTo))", Collectors.maxBy(Integer::compareTo));
+		collectorCacheBuilder.put("collect(java.util.stream.Collectors.maxBy(Long::compareTo))", Collectors.maxBy(Long::compareTo));
+		collectorCacheBuilder.put("collect(java.util.stream.Collectors.minBy(String::compareTo))", Collectors.minBy(String::compareTo));
+		collectorCacheBuilder.put("collect(java.util.stream.Collectors.minBy(Integer::compareTo))", Collectors.minBy(Integer::compareTo));
+		collectorCacheBuilder.put("collect(java.util.stream.Collectors.minBy(Long::compareTo))", Collectors.minBy(Long::compareTo));		
+		collectorCacheBuilder.put("collect(java.util.stream.Collectors.groupingBy("
+				+ "SimpleEntry<String, Long>::getKey, java.util.stream.Collectors.counting()))", 
+					Collectors.groupingBy(SimpleEntry<String, Long>::getKey, Collectors.counting()));
+		collectorCacheBuilder.put("collect(java.util.stream.Collectors.groupingBy(SimpleEntry<String, Integer>::getKey, "
+				+ "java.util.stream.Collectors.counting())", 
 				Collectors.groupingBy(SimpleEntry<String, Integer>::getKey, Collectors.counting()));
-		collectorCacheBuilder.put("collect(Collectors.counting())", Collectors.counting());
+		collectorCacheBuilder.put("collect(java.util.stream.Collectors.counting())", Collectors.counting());
 	}
 }
