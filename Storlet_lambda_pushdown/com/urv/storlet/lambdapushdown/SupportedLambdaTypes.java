@@ -42,6 +42,15 @@ public class SupportedLambdaTypes {
 				new TypeReference<Function<String, SimpleEntry<String, Integer>>>(){});
 		supportedMapTypes.put("java.util.function.Function<java.lang.String, java.util.AbstractMap.SimpleEntry<java.lang.String, java.lang.String>>", 		
 				new TypeReference<Function<String, SimpleEntry<String, String>>>(){});
+		supportedMapTypes.put("java.util.function.Function<java.lang.String, java.util.List<java.lang.String>>", 		
+				new TypeReference<Function<String, java.util.List<java.lang.String>>>(){});
+		supportedMapTypes.put("java.util.function.Function<java.lang.String, java.util.List<java.lang.Integer>>", 		
+				new TypeReference<Function<String, java.util.List<java.lang.Integer>>>(){});
+		supportedMapTypes.put("java.util.function.Function<java.lang.String, java.util.List<java.lang.Long>>", 		
+				new TypeReference<Function<String, java.util.List<java.lang.Long>>>(){});
+		supportedMapTypes.put("java.util.function.Function<java.util.List<java.lang.String>, java.util.AbstractMap.SimpleEntry<java.lang.String, java.lang.Integer>>", 		
+				new TypeReference<Function<java.util.List<java.lang.String>, java.util.AbstractMap.SimpleEntry<java.lang.String, java.lang.Integer>>>(){});
+		
 		
 		supportedFilterTypes.put("java.util.function.Predicate<java.lang.String>", 
 				new TypeReference<Predicate<String>>() {});
@@ -51,6 +60,12 @@ public class SupportedLambdaTypes {
 				new TypeReference<Predicate<SimpleEntry<String, Long>>>() {});
 		supportedFilterTypes.put("java.util.function.Predicate<java.lang.Long>", 		
 				new TypeReference<Predicate<Long>>() {});
+		supportedFilterTypes.put("java.util.function.Predicate<java.util.List<java.lang.String>>", 		
+				new TypeReference<Predicate<java.util.List<java.lang.String>>>() {});
+		supportedFilterTypes.put("java.util.function.Predicate<java.util.List<java.lang.Integer>>", 		
+				new TypeReference<Predicate<java.util.List<java.lang.Integer>>>() {});
+		supportedFilterTypes.put("java.util.function.Predicate<java.util.List<java.lang.Long>>", 		
+				new TypeReference<Predicate<java.util.List<java.lang.Long>>>() {});
 		
 		supportedFlatMapTypes.put("java.util.function.Function<java.lang.String, java.util.stream.Stream<java.lang.String>>", 
 				new TypeReference<Function<String, Stream<String>>>(){});	
