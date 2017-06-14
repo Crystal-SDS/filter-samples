@@ -68,7 +68,7 @@ public class CollectorCompilationHelper {
 				+ "SimpleEntry<String, Long>::getKey, java.util.stream.Collectors.counting()))", 
 					Collectors.groupingBy(SimpleEntry<String, Long>::getKey, Collectors.counting()));
 		collectorCacheBuilder.put("collect(java.util.stream.Collectors.groupingBy(SimpleEntry<String, Integer>::getKey, "
-				+ "java.util.stream.Collectors.counting())", 
+				+ "java.util.stream.Collectors.counting()))", 
 				Collectors.groupingBy(SimpleEntry<String, Integer>::getKey, Collectors.counting()));
 		collectorCacheBuilder.put("collect(java.util.stream.Collectors.counting())", Collectors.counting());
 	}
