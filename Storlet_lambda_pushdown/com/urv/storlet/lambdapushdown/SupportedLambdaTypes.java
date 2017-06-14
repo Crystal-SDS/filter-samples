@@ -50,6 +50,10 @@ public class SupportedLambdaTypes {
 				new TypeReference<Function<String, java.util.List<java.lang.Long>>>(){});
 		supportedMapTypes.put("java.util.function.Function<java.util.List<java.lang.String>, java.util.AbstractMap.SimpleEntry<java.lang.String, java.lang.Integer>>", 		
 				new TypeReference<Function<java.util.List<java.lang.String>, java.util.AbstractMap.SimpleEntry<java.lang.String, java.lang.Integer>>>(){});
+		supportedMapTypes.put("java.util.function.Function<java.util.List<java.lang.String>, java.util.AbstractMap.SimpleEntry<java.lang.String, java.lang.Long>>", 		
+				new TypeReference<Function<java.util.List<java.lang.String>, java.util.AbstractMap.SimpleEntry<java.lang.String, java.lang.Long>>>(){});
+		supportedMapTypes.put("java.util.function.Function<java.lang.String, java.lang.String[]>", 		
+				new TypeReference<Function<String, java.lang.String[]>>(){});
 		
 		
 		supportedFilterTypes.put("java.util.function.Predicate<java.lang.String>", 

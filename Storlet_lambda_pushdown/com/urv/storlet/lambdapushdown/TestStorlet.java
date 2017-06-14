@@ -14,7 +14,7 @@ import com.ibm.storlet.common.StorletOutputStream;
 
 public class TestStorlet {
 	
-	public static final String INPUT_FILE_NAME = "input/meter_gen.csv";
+	public static final String INPUT_FILE_NAME = "input/1_u1.csv";
 	public static final String OUTPUT_FILE_NAME = "/dev/null"; //"input/meter.results";
 	public static final String OUTPUT_MD_FILE_NAME = "input/output_record_md.txt";
 	public static final String LOGGER_FILE_NAME = "input/logger";	
@@ -44,11 +44,24 @@ public class TestStorlet {
 			StorletLogger logger = new StorletLogger(loggerFile.getFD());				
 			Map<String, String> parameters = new HashMap<String, String>();	
 			
-			//parameters.put("1-lambda", "java.util.function.Predicate<java.lang.String>|filter(s -> !s.contains(\"Hamlet\"))");
-			parameters.put("2-lambda", "java.util.function.Function<java.lang.String, java.lang.String>|map(s -> s)");
-			//parameters.put("3-filter", "s -> s.contains(\"B\")");	
-			//parameters.put("4-map", "s -> s + \"aaaaaaaa\"");
-			//parameters.put("5-filter", "s -> s.contains(\"A\")");	
+			//parameters.put("1-lambda", "java.util.function.Predicate<java.lang.String>|filter(s -> s.contains(\"Hamlet\"))");
+			parameters.put("0-lambda", "java.util.function.Predicate<java.lang.String>|filter(s -> s.startsWith(\"storage_done\") "
+					+ "&& (s.contains(\"PutContentResponse\") || s.contains(\"GetContentResponse\") || s.contains(\"MakeResponse\") || "
+					+ "s.contains(\"Unlink\") || s.contains(\"MoveResponse\")))");
+			//parameters.put("1-lambda", "java.util.function.Function<java.lang.String' java.lang.String[]>|"
+			//		+ "map(s -> s.split(\",\"))");
+			parameters.put("1-lambda", "java.util.function.Function<java.lang.String' java.util.List<java.lang.String>>|"
+					+ "map(s -> { java.util.List<String> l $ new java.util.ArrayList<String>(); String[] a $ s.split(\"'\"); for (String x : a) l.add(x); return l; })");
+			//parameters.put("2-lambda", "java.util.function.Predicate<java.util.List<java.lang.String>>|filter(s -> s.get(19).equals(\"PutContentResponse\") "
+			//		+ "|| s.get(19).equals(\"GetContentResponse\") || s.get(19).equals(\"MakeResponse\") || s.get(19).equals(\"Unlink\") || "
+			//		+ "s.get(19).equals(\"MoveResponse\"))");	
+			parameters.put("3-lambda", "java.util.function.Function<java.util.List<java.lang.String>\' "
+					+ "java.util.AbstractMap.SimpleEntry<java.lang.String\' java.lang.Integer>>|"
+					+ "map(s -> new SimpleEntry<String\' Integer>(s.get(33) + \"-\" + s.get(19)\' 1))");
+			parameters.put("4-lambda", "Collector|collect(java.util.stream.Collectors.groupingBy("
+					+ "SimpleEntry<String' Integer>::getKey' java.util.stream.Collectors.counting()))");
+
+			//parameters.put("1-lambda", "java.util.function.Predicate<java.lang.String>|filter(s -> s.contains(\"Hamlet\"))");	
 			
 			System.out.println("before storlet");
 			long iniTime = System.nanoTime();
