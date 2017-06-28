@@ -155,7 +155,7 @@ public class CSVStorlet implements IStorlet, PushdownStorletConstants, SparkInde
               }
 
               String line;
-              rangeBytesLeft = env.getEndRangePosition() - env.getStartRangePosition() + 1;
+              rangeBytesLeft = Integer.MAX_VALUE - 1; //env.getEndRangePosition() - env.getStartRangePosition() + 1;
               try {
                     if (env.getIsFirstPartition() == false) {
                             // Discard first (possibly broken) record:
