@@ -29,7 +29,7 @@
     </target>
 
     <target name="jar" depends="java">
-        <jar destfile="target/csvstorlet-1.0.jar" basedir="bin">
+        <jar destfile="../target/csvstorlet-1.0.jar" basedir="bin">
             <manifest>
                 <attribute name="Main-Class"
                            value="org.apache.openstack.storlet.csv.CSVStorlet" />
