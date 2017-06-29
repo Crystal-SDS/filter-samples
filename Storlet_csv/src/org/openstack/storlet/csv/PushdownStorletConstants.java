@@ -57,4 +57,7 @@ public interface PushdownStorletConstants {
     public static final long   DEFAULT_STREAM_BUFFER_LENGTH = 64 * 1024;  // 64 K
 
     public static final String COLUMNS_SEPARATOR = ",";   // in fact used in upper packages
+    
+    //Added to enable parameter pass via dashboard, as "," is a reserved parameter
+    public static final String SWIFT_STORLET_QUERY_PARAM_COMMA_EQUIVALENT = "|";
 }

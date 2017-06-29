@@ -14,10 +14,10 @@ import org.openstack.storlet.common.StorletOutputStream;
 
 public class TestStorlet {
 	
-	public static final String INPUT_FILE_NAME = "/home/user/workspace/filter-samples/Storlet_csv/meter-1MB.csv";
-	public static final String OUTPUT_FILE_NAME = "/home/user/workspace/filter-samples/Storlet_csv/result.csv"; //"input/meter.results";
-	public static final String OUTPUT_MD_FILE_NAME = "/home/user/workspace/filter-samples/Storlet_csv/output_record_md.txt";
-	public static final String LOGGER_FILE_NAME = "/home/user/workspace/filter-samples/Storlet_csv/logger";	
+	public static final String INPUT_FILE_NAME = "/media/raul/Data/Documentos/Recerca/Proyectos/IOStack/Code/filter-samples/Storlet_csv/meter-1MB.csv";
+	public static final String OUTPUT_FILE_NAME = "/media/raul/Data/Documentos/Recerca/Proyectos/IOStack/Code/filter-samples/Storlet_csv/result.csv"; //"input/meter.results";
+	public static final String OUTPUT_MD_FILE_NAME = "/media/raul/Data/Documentos/Recerca/Proyectos/IOStack/Code/filter-samples/Storlet_csv/output_record_md.txt";
+	public static final String LOGGER_FILE_NAME = "/media/raul/Data/Documentos/Recerca/Proyectos/IOStack/Code/filter-samples/Storlet_csv/logger";	
 	
 	public static void main(String[] args) {
 		System.out.println("entering main");
@@ -45,8 +45,8 @@ public class TestStorlet {
 			Map<String, String> parameters = new HashMap<String, String>();	
 			
 			//parameters.put("1-lambda", "java.util.function.Predicate<java.lang.String>|filter(s -> s.contains(\"Hamlet\"))");
-			parameters.put("selected_columns", "0,1,2,3,4");
-			parameters.put("where_clause", "EqualTo(4,METER000001)");
+			parameters.put("selected_columns", "0|1|4");
+			parameters.put("where_clause", "EqualTo(4|METER000001)");
 
 			
 			System.out.println("before storlet");

@@ -108,6 +108,8 @@ public class ReaderEnv implements PushdownStorletConstants, SparkIndependentStor
         // List of selected fields:  (permits to requests columns by field header name)
         {
             String theFields = Utils.getParam(theMap, SWIFT_PUSHDOWN_STORLET_SELECTED_COLUMNS, DEFAULT_COLUMNS, logger,  false);
+            //Added to solve the problem with reserved character in Storlets middleware
+            theFields = theFields.replace(SWIFT_STORLET_QUERY_PARAM_COMMA_EQUIVALENT, COLUMNS_SEPARATOR);
             String[] requestedFieldsStrings = null;
             if (theFields != null && theFields.length()>0) {
                 requestedFieldsStrings = theFields.split(COLUMNS_SEPARATOR);
@@ -153,6 +155,8 @@ public class ReaderEnv implements PushdownStorletConstants, SparkIndependentStor
         // The WHERE clause:
         {
             theWhereClause = Utils.getParam(theMap, SWIFT_PUSHDOWN_STORLET_WHERE_CLAUSE, DEFAULT_PREDICATE, logger, false);
+            //Added to solve the problem with reserved character in Storlets middleware
+            theWhereClause = theWhereClause.replace(SWIFT_STORLET_QUERY_PARAM_COMMA_EQUIVALENT, COLUMNS_SEPARATOR);
             Utils.doubleLogPrint(logger, "theWhereClause = " + theWhereClause);
         }
 
