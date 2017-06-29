@@ -49,9 +49,9 @@ public class ReaderEnv implements PushdownStorletConstants, SparkIndependentStor
     private Map<String, String> theParamMap;
     private StorletLogger logger;
 
-    private long startRangePosition;   // the file offset from which the range is defined
-    private long endRangePosition;     // the end file position for which the range is defined
-    private int maxRecordLine;         // the maximum length of a record
+    //private long startRangePosition;   // the file offset from which the range is defined
+    //private long endRangePosition;     // the end file position for which the range is defined
+    //private int maxRecordLine;         // the maximum length of a record
     private boolean fistPartition;     // is this the first partition
     private long dynamicDebug;         // a request dependent debug value which permits to force logging of certain events
 
@@ -157,7 +157,7 @@ public class ReaderEnv implements PushdownStorletConstants, SparkIndependentStor
         }
 
         // The requested range:
-        {
+        /*{
             startRangePosition = getLongParam(SWIFT_PUSHDOWN_STORLET_RANGE_START, -1);
             if (startRangePosition == -1) {
                 throw new StorletException("Start position is either missing or malformed");
@@ -167,19 +167,19 @@ public class ReaderEnv implements PushdownStorletConstants, SparkIndependentStor
             if (endRangePosition == -1) {
                 throw new StorletException("End position is either missing or malformed");
             }
-        }
+        }*/
 
         // Max record line
-        {
+        /*{
             maxRecordLine = getIntParam(SWIFT_PUSHDOWN_STORLET_MAX_RECORD_LINE, -1);
             if (maxRecordLine == -1) {
                 throw new StorletException("Max Record Line is either missing or malformed");
             }
-         }
+         }*/
 
          // First Partition
          {
-            String fistPartitionString = Utils.getParam(theParamMap, SWIFT_PUSHDOWN_STORLET_IS_FIRST_PARTITION, "", logger);
+            String fistPartitionString = Utils.getParam(theParamMap, SWIFT_PUSHDOWN_STORLET_IS_FIRST_PARTITION, "0", logger);
             if (fistPartitionString.equals("")) {
                 throw new StorletException("First partition is missing");
             }
@@ -282,21 +282,21 @@ public class ReaderEnv implements PushdownStorletConstants, SparkIndependentStor
         return arr;
     }
 
-    public int getMaxRecordLine() {
+    /*public int getMaxRecordLine() {
         return maxRecordLine;
-    }
+    }*/
 
     public boolean getIsFirstPartition() {
         return fistPartition;
     }
 
-    public long getStartRangePosition() {
+    /*public long getStartRangePosition() {
         return startRangePosition;
     }
 
     public long getEndRangePosition() {
         return endRangePosition;
-    }
+    }*/
 
     public long getDynamicDebug() {
         return dynamicDebug;
