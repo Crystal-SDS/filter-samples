@@ -14,10 +14,10 @@ import org.openstack.storlet.common.StorletOutputStream;
 
 public class TestStorlet {
 	
-	public static final String INPUT_FILE_NAME = "/media/raul/Data/Documentos/Recerca/Proyectos/IOStack/Code/filter-samples/Storlet_csv/meter-1MB.csv";
-	public static final String OUTPUT_FILE_NAME = "/media/raul/Data/Documentos/Recerca/Proyectos/IOStack/Code/filter-samples/Storlet_csv/result.csv"; //"input/meter.results";
-	public static final String OUTPUT_MD_FILE_NAME = "/media/raul/Data/Documentos/Recerca/Proyectos/IOStack/Code/filter-samples/Storlet_csv/output_record_md.txt";
-	public static final String LOGGER_FILE_NAME = "/media/raul/Data/Documentos/Recerca/Proyectos/IOStack/Code/filter-samples/Storlet_csv/logger";	
+	public static final String INPUT_FILE_NAME = "./Storlet_csv/meter-1MB.csv";
+	public static final String OUTPUT_FILE_NAME = "./Storlet_csv/result.csv"; //"input/meter.results";
+	public static final String OUTPUT_MD_FILE_NAME = "./Storlet_csv/output_record_md.txt";
+	public static final String LOGGER_FILE_NAME = "./Storlet_csv/logger";	
 	
 	public static void main(String[] args) {
 		System.out.println("entering main");

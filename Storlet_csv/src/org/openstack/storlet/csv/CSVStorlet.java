@@ -176,12 +176,14 @@ public class CSVStorlet implements IStorlet, PushdownStorletConstants, SparkInde
 
               try {
                     // Consume rest of content
+            	  	boolean isFirstLine = true;
                     while ( ((line = br.readLine()) != null)  && (rangeBytesLeft >= -1) ) {
                             final byte[] lineBytes = line.getBytes(charset);
                             int bytesRead = lineBytes.length + recordSeparatorBytesLen;
                             final String[] trace_line;
                             rangeBytesLeft -= bytesRead;
                             processedBytes += bytesRead;
+                            
 
                             if (columnSelectionActivated || (where_string != null && where_string.length() > 0) ) {
                                     // if specific columns have been chosen, or if a predicate has to be evaluated
@@ -201,6 +203,12 @@ public class CSVStorlet implements IStorlet, PushdownStorletConstants, SparkInde
                             }
 
                             try {
+                            		//Added to allow Spark to infer the CSV schema
+	                                if (isFirstLine) {
+	                                	outputStream.write((chooseColumns(trace_line, select) + "\n").getBytes(charset));
+	                                	isFirstLine = false;
+	                                	continue;
+	                                }
                                     if ( where_string == null || where_string.length() == 0 || theClause.isValid(logger, trace_line)) {
                                             final byte[] appendLine;
                                             if (columnSelectionActivated) {
