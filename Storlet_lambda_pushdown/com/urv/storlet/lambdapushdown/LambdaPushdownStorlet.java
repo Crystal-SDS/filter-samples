@@ -9,6 +9,7 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -84,6 +85,8 @@ public class LambdaPushdownStorlet implements IStorlet {
 	//Storlet middleware treats every "," as a separation between key/value parameter pairs
 	private static final String COMMA_REPLACEMENT_IN_PARAMS = "'";
 	private static final String EQUAL_REPLACEMENT_IN_PARAMS = "$";
+	
+	private static final String noneType = "None<>";
 	
 	public LambdaPushdownStorlet() {
 		new CollectorCompilationHelper().initializeCollectorCache(collectorCache);
@@ -310,7 +313,7 @@ public class LambdaPushdownStorlet implements IStorlet {
 			function = (s) -> {						
 				try {
 					System.out.println("Goingto execute: " + lambdaSignature + " " + theMethod.getParameterCount());
-					return (theMethod.getParameterCount()==0)? theMethod.invoke(((Stream) s)):
+					return (lambdaType.equals(noneType))? invokeMethodOnStream((Stream) s, theMethod, lambdaSignature):
 						theMethod.invoke(((Stream) s), lambdaFactory.createLambdaUnchecked(
 						getLambdaBody(lambdaSignature), getLambdaType(methodName, lambdaType)));
 				} catch (IllegalAccessException|InvocationTargetException e) {
@@ -327,11 +330,49 @@ public class LambdaPushdownStorlet implements IStorlet {
 		return function;
 	}
 	
+	private Object invokeMethodOnStream(Stream s, Method theMethod, String lambdaSignature) 
+						throws IllegalAccessException, IllegalArgumentException, InvocationTargetException {
+		//For methods without params, just invoke it (like distinct)
+		if (theMethod.getParameterTypes().length==0) 
+			return theMethod.invoke(((Stream) s));
+		
+		//For methods with params, we have to infer them for the invocation (like skip(n) or limit (n))
+		Parameter[] methodParams = theMethod.getParameters();
+		String[] parameterSignature = lambdaSignature.substring(lambdaSignature.indexOf("(")+1,
+													lambdaSignature.lastIndexOf(")")).split(",");
+		Object[] convertedParams = new Object[methodParams.length];
+		int index = 0;
+		for (Parameter p: methodParams) {
+			if (p.getParameterizedType().toString().startsWith("long") || p.getParameterizedType().toString().startsWith("java.lang.Long")) 
+					convertedParams[index] = Long.valueOf(parameterSignature[index]);
+			else if (p.getParameterizedType().toString().startsWith("int") || p.getParameterizedType().toString().startsWith("java.lang.Integer")) 
+				convertedParams[index] = Long.valueOf(parameterSignature[index]);
+			else if (p.getParameterizedType().toString().startsWith("double") || p.getParameterizedType().toString().startsWith("java.lang.Double")) 
+				convertedParams[index] = Long.valueOf(parameterSignature[index]);
+			else if (p.getParameterizedType().toString().startsWith("boolean") || p.getParameterizedType().toString().startsWith("java.lang.Boolean")) 
+				convertedParams[index] = Long.valueOf(parameterSignature[index]);
+			else if (p.getParameterizedType().toString().startsWith("java.lang.String")) 
+				convertedParams[index] = Long.valueOf(parameterSignature[index]);
+			index++;
+		}
+		//This is mainly used for simple methods requiring few simple arguments, like skip or limit
+		switch (methodParams.length) {
+			case 1:	return theMethod.invoke(((Stream) s), convertedParams[0]);
+			case 2:	return theMethod.invoke(((Stream) s), convertedParams[0], convertedParams[1]);
+			default: System.err.println("Trying to invoke a non-lambda method with more than 2 parameters. "
+					 + "We do not consider these methods, so this will crash.");
+				break;
+		};		
+		return null;
+	}
+	
 	private Method getMethodInvocation(String methodName, String lambdaType) 
 			throws NoSuchMethodException, SecurityException, ClassNotFoundException {
 		Method theMethod = null;
-		if (lambdaType.equals("None<>")) {
-			theMethod = Stream.class.getMethod(methodName);
+		if (lambdaType.equals(noneType)) {
+			theMethod = Stream.of(Stream.class.getMethods())
+					.filter(m -> m.getName().equals(methodName))
+					.findFirst().get();
 		}else theMethod = Stream.class.getMethod(methodName, Class.forName(
 					lambdaType.substring(0, lambdaType.indexOf("<")))); 
 		return theMethod;
