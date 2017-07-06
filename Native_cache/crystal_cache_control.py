@@ -1,4 +1,5 @@
 from crystal_filter_middleware.filters.abstract_filter import AbstractFilter, FilterIter
+from swift.common.swob import Request, Response
 from threading import Semaphore
 import hashlib
 import time
@@ -8,7 +9,7 @@ ENABLE_CACHE = True
 # Cache size limit in bytes
 CACHE_MAX_SIZE = 200*1024*1024*1024
 available_policies = {"LRU", "LFU"}
-CACHE_PATH = "/mnt/ssd/"
+CACHE_PATH = "/tmp/cache/"
 
 
 class Singleton(type):
@@ -19,38 +20,63 @@ class Singleton(type):
             cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
 
-
+# crystal_cache_control.CacheControl has 3 points of interception:
+# 1. pre-get: to check if the file is in the cache
+# 2. post-get: to store an existing file in the cache
+# 3. pre-put: to store a new file in the cache
 class CacheControl(AbstractFilter):
 
     __metaclass__ = Singleton
 
     def __init__(self, global_conf, filter_conf, logger):
-        super(AbstractFilter, self).__init__(global_conf, filter_conf, logger)
+        super(CacheControl, self).__init__(global_conf, filter_conf, logger)
         self.cache = BlockCache()
 
     def _get_object(self, req_resp, crystal_iter):
 
         resp_headers = {}
-        """ CHECK IF FILE IS IN CACHE """
-        if os.path.exists(CACHE_PATH):
 
-            object_path = req_resp.environ['PATH_INFO']
-            object_id = (hashlib.md5(object_path).hexdigest())
+        if isinstance(req_resp, Request):
 
-            object_id, object_size, object_etag = self.cache.access_cache("GET", object_id)
+            # CHECK IF FILE IS IN CACHE
+            if os.path.exists(CACHE_PATH):
 
-            if object_id:
-                self.logger.info('SDS Cache Filter - Object '+object_path+' in cache')
-                resp_headers = {}
-                resp_headers['content-length'] = str(object_size)
-                resp_headers['etag'] = object_etag
+                object_path = req_resp.environ['PATH_INFO']
+                object_id = (hashlib.md5(object_path).hexdigest())
 
-                cached_object = open(CACHE_PATH+object_id, 'r')
+                object_id, object_size, object_etag = self.cache.access_cache("GET", object_id)
 
-                # TODO: Return headers if necessary
-                return cached_object
+                if object_id:
+                    self.logger.info('SDS Cache Filter - Object '+object_path+' in cache')
+                    resp_headers = {}
+                    resp_headers['content-length'] = str(object_size)
+                    resp_headers['etag'] = object_etag
 
-        return crystal_iter
+                    cached_object = open(CACHE_PATH+object_id, 'r')
+
+                    # TODO: Return headers if necessary
+                    return cached_object
+
+        elif isinstance(req_resp, Response):
+
+            if os.path.exists(CACHE_PATH):
+                object_path = req_resp.environ['PATH_INFO']
+                object_size = int(req_resp.headers.get('Content-Length', ''))
+                object_etag = req_resp.headers.get('ETag', '')
+                object_id = (hashlib.md5(object_path).hexdigest())
+
+                to_evict = self.cache.access_cache("PUT", object_id, object_size, object_etag)
+
+                for object_id in to_evict:
+                    os.remove(CACHE_PATH + object_id)
+
+                self.logger.info('SDS Cache Filter (POST-GET) - Object ' + object_path + ' stored in cache with ID: ' + object_id)
+
+                self.cached_object = open(CACHE_PATH + object_id, 'w')
+                return FilterIter(crystal_iter, 10, self._filter_put)
+
+        #return crystal_iter
+        return req_resp.environ['wsgi.input']
 
     def _put_object(self, request, crystal_iter):
 
@@ -146,7 +172,7 @@ class BlockCache(object):
                 self.descriptors, evicted = self.descriptors[:-1], self.descriptors[-1]
                 # Reduce the size of the cache
                 self.cache_size_bytes -= evicted.size
-                # Icrease evictions count and add to
+                # Increase evictions count and add to
                 self.evictions += 1
                 to_evict.append(evicted.block_id)
                 # Remove from evictions dict
@@ -188,12 +214,9 @@ class BlockCache(object):
         else:
             raise Exception("Unsupported caching policy.")
 
-    def write_statistics(self, statistics_manager):
+    def write_statistics(self):
         if ENABLE_CACHE:
-            statistics_manager.cache_state(self.get_hits, self.put_hits,
-                                           self.misses, self.evictions,
-                                           self.reads, self.writes,
-                                           self.cache_size_bytes)
+            self.cache_state()
 
     def cache_state(self):
         print "CACHE GET HITS: ", self.get_hits
@@ -205,4 +228,4 @@ class BlockCache(object):
         print "CACHE SIZE: ", self.cache_size_bytes
 
         for descriptor in self.descriptors:
-            print "Object: ",  descriptor.block_id, descriptor.last_access, descriptor.get_hits, descriptor.put_hits, descriptor.num_accesses, descriptor.size
+            print "Object: ", descriptor.block_id, descriptor.last_access, descriptor.get_hits, descriptor.put_hits, descriptor.num_accesses, descriptor.size
