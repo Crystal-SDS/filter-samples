@@ -43,7 +43,7 @@ public class TestStorlet {
 			FileOutputStream loggerFile = new FileOutputStream(LOGGER_FILE_NAME);					
 			StorletLogger logger = new StorletLogger(loggerFile.getFD());				
 			Map<String, String> parameters = new HashMap<String, String>();	
-			"".replace("", "");
+			parameters.put("sequential", "true");
 			
 			//selected_columns=0|1|5|7, where_clause=And(StringStartsWith(0|2015-01)|EqualTo(7|Paris))
 			//parameters.put("0-lambda", "None<>|skip(1)");

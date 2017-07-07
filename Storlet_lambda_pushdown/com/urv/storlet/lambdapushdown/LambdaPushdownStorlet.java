@@ -85,6 +85,8 @@ public class LambdaPushdownStorlet implements IStorlet {
 	//Storlet middleware treats every "," as a separation between key/value parameter pairs
 	private static final String COMMA_REPLACEMENT_IN_PARAMS = "'";
 	private static final String EQUAL_REPLACEMENT_IN_PARAMS = "$";
+	private static final String ADD_FILE_HEADER = "add_header";
+	private static final String SEQUENTIAL_STREAM = "sequential";
 	
 	private static final String noneType = "None<>";
 	
@@ -204,11 +206,24 @@ public class LambdaPushdownStorlet implements IStorlet {
 			//Convert InputStream as a Stream, and apply lambdas
 			BufferedWriter writeBuffer = new BufferedWriter(new OutputStreamWriter(os, CHARSET), BUFFER_SIZE);
 			BufferedReader readBuffer = new BufferedReader(new InputStreamReader(is, CHARSET), BUFFER_SIZE); 
-			writeYourLambdas(readBuffer.lines().parallel()).forEach(line -> {	
+			//Check if we have to write the first line of the file always
+			if (parameters.containsKey(ADD_FILE_HEADER)){
+				writeBuffer.write(readBuffer.readLine());
+				writeBuffer.newLine();
+			}
+			//By default the streams are parallel, but if ordering is necessary then convert it to sequential
+			Stream<String> dataStream = readBuffer.lines().parallel();
+			if (parameters.containsKey(SEQUENTIAL_STREAM)){
+				dataStream = dataStream.sequential();
+			}
+				
+			//Then compute the lambdas
+			writeYourLambdas(dataStream).forEach(line -> {	
 				try {
 					String lineString = line.toString();
 					writeBuffer.write(lineString);  //As we handle different types of object, invoke toString
 					writeBuffer.newLine();
+					//Track the amount of consumed bytes for debug purposes
 					inputBytes.getAndAdd(lineString.length());
 				}catch(IOException e){
 					logger.emitLog(this.getClass().getName() + " raised IOException: " + e.getMessage());
