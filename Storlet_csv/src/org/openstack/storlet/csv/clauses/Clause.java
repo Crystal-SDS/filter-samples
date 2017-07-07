@@ -24,7 +24,7 @@ import java.util.List;
 import java.util.Set;
 
 import org.openstack.storlet.csv.Utils;
-import org.openstack.storlet.common.StorletLogger;
+import com.ibm.storlet.common.StorletLogger;
 
 /**
  * @author moatti

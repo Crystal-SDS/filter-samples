@@ -44,6 +44,8 @@ public class SupportedLambdaTypes {
 				new TypeReference<Function<String, SimpleEntry<String, String>>>(){});
 		supportedMapTypes.put("java.util.function.Function<java.lang.String, java.util.List<java.lang.String>>", 		
 				new TypeReference<Function<String, java.util.List<java.lang.String>>>(){});
+		supportedMapTypes.put("java.util.function.Function<java.util.List<java.lang.String>, java.lang.String>", 		
+				new TypeReference<Function<java.util.List<java.lang.String>, String>>(){});
 		supportedMapTypes.put("java.util.function.Function<java.lang.String, java.util.List<java.lang.Integer>>", 		
 				new TypeReference<Function<String, java.util.List<java.lang.Integer>>>(){});
 		supportedMapTypes.put("java.util.function.Function<java.lang.String, java.util.List<java.lang.Long>>", 		

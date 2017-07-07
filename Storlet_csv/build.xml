@@ -37,10 +37,6 @@
         </jar>
     </target>
 
-    <target name="text" depends="jar">
-        <copy file="meter-1MB.csv" toFile="bin/meter-1MB.csv" />
-    </target>
-
-    <target name="build" depends="clean, jar, text">
+    <target name="build" depends="clean, jar">
     </target>
 </project>
