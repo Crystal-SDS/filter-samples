@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -217,10 +218,10 @@ public class LambdaPushdownStorlet implements IStorlet {
 				dataStream = dataStream.sequential();
 			}
 				
-			//Then compute the lambdas
-			writeYourLambdas(dataStream).forEach(line -> {	
+			//Then compute the lambdas and write the output
+			writeYourLambdas(dataStream).forEach(line -> {
 				try {		
-					String lineString;
+					String lineString = "";
 					//Clean the standard toString() output of data structures like List
 					if (line instanceof List){
 						StringBuilder sb = new StringBuilder();
@@ -230,10 +231,9 @@ public class LambdaPushdownStorlet implements IStorlet {
 							prefix = ",";
 						}
 						lineString = sb.toString();
-					}else{
-						//As we handle different types of object, invoke toString
-						lineString = line.toString();						
-					}
+					//As we handle different types of object, invoke toString
+					}else lineString = line.toString();						
+					
 					writeBuffer.write(lineString);
 					//Track the amount of consumed bytes for debug purposes
 					inputBytes.getAndAdd(lineString.length());
@@ -243,12 +243,24 @@ public class LambdaPushdownStorlet implements IStorlet {
 					e.printStackTrace(System.err);
 				}
 			});
+			logger.emitLog("Closing the streams after lambda execution...");
 			writeBuffer.close();
 			is.close();
 			os.close();
 		} catch (IOException e1) {
 			logger.emitLog(this.getClass().getName() + " raised IOException 2: " + e1.getMessage());
 			e1.printStackTrace(System.err);
+		} catch (RuntimeException e2) {
+			//The idea of this catch is to solve the problem of interrupting streams at the client side
+			logger.emitLog(this.getClass().getName() + " raised RuntimeException: " + e2.getMessage());
+			e2.printStackTrace(System.err);
+		} finally {
+			try {
+				is.close();
+				os.close();
+			} catch (IOException e) {
+				logger.emitLog(this.getClass().getName() + " raised IOException in finally block: " + e.getMessage());
+			}
 		}		
 		logger.emitLog("STREAMS BW: " + ((inputBytes.get()/1024./1024.) + " MB /" +
 				((System.nanoTime()-iniTime)/1000000000.)) + " secs = " + ((inputBytes.get()/1024./1024.)/
@@ -286,7 +298,6 @@ public class LambdaPushdownStorlet implements IStorlet {
 			return Stream.of(((Optional) terminalOperation.apply(functionsOnStream)).get());
 		} catch (NoSuchElementException e) {
 			System.err.println("Terminal operation without result in Optional value.");
-			e.printStackTrace();
 		}
 		//Temporal default value
 		return Stream.of("");		

@@ -53,9 +53,9 @@ public class TestStorlet {
 				"return list;})");
 			parameters.put("1-lambda", "java.util.function.Predicate<java.util.List<java.lang.String>>|" +
 				"filter(s -> s.get(0).startsWith(\"2012\") && s.get(4).equals(\"elec\"))");			
-			parameters.put("2-lambda", "java.util.function.BinaryOperator<java.util.List<java.lang.String>>|" +
+			/*parameters.put("2-lambda", "java.util.function.BinaryOperator<java.util.List<java.lang.String>>|" +
 			"reduce((l1, l2) -> { if (Double.valueOf(l1.get(1)) > Double.valueOf(l2.get(1))) return l1; " +
-			"else return l2;})");
+			"else return l2;})");*/
 			
 			
 			/*parameters.put("0-lambda", "java.util.function.Function<java.lang.String' java.util.List<java.lang.String>>|"
