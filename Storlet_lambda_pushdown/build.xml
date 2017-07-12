@@ -5,7 +5,7 @@
 	</target>
 
 	<target name="lambdapushdown">
-		<javac srcdir="Storlet_lambda_pushdown/com/urv/storlet/lambdapushdown/" destdir="bin" includeantruntime="false">
+		<javac srcdir="com/urv/storlet/lambdapushdown/" destdir="bin" includeantruntime="false">
 			<classpath>
 		        <pathelement path="lib/SCommon.jar"/>
 				<pathelement path="lib/lambdaFromString.jar"/>
