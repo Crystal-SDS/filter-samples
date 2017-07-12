@@ -84,6 +84,10 @@ public class SupportedLambdaTypes {
 				new TypeReference<BinaryOperator<Integer>>(){});
 		supportedReduceTypes.put("java.util.function.BinaryOperator<java.lang.Long>", 
 				new TypeReference<BinaryOperator<Long>>(){});
+		supportedReduceTypes.put("java.util.function.BinaryOperator<java.lang.String>", 
+				new TypeReference<BinaryOperator<String>>(){});
+		supportedReduceTypes.put("java.util.function.BinaryOperator<java.util.List<java.lang.String>>", 
+				new TypeReference<BinaryOperator<java.util.List<java.lang.String>>>(){});
 	}
 	
 	public static TypeReference getMapType(String mapType){return supportedMapTypes.get(mapType);}

@@ -27,12 +27,12 @@ import java.util.regex.Pattern;
 import java.util.stream.Collector;
 import java.util.stream.Stream;
 
-import org.openstack.storlet.common.IStorlet;
-import org.openstack.storlet.common.StorletException;
-import org.openstack.storlet.common.StorletInputStream;
-import org.openstack.storlet.common.StorletLogger;
-import org.openstack.storlet.common.StorletObjectOutputStream;
-import org.openstack.storlet.common.StorletOutputStream;
+import com.ibm.storlet.common.IStorlet;
+import com.ibm.storlet.common.StorletException;
+import com.ibm.storlet.common.StorletInputStream;
+import com.ibm.storlet.common.StorletLogger;
+import com.ibm.storlet.common.StorletObjectOutputStream;
+import com.ibm.storlet.common.StorletOutputStream;
 
 import pl.joegreen.lambdaFromString.LambdaFactory;
 import pl.joegreen.lambdaFromString.TypeReference;
@@ -219,12 +219,25 @@ public class LambdaPushdownStorlet implements IStorlet {
 				
 			//Then compute the lambdas
 			writeYourLambdas(dataStream).forEach(line -> {	
-				try {
-					String lineString = line.toString();
-					writeBuffer.write(lineString);  //As we handle different types of object, invoke toString
-					writeBuffer.newLine();
+				try {		
+					String lineString;
+					//Clean the standard toString() output of data structures like List
+					if (line instanceof List){
+						StringBuilder sb = new StringBuilder();
+						String prefix = "";
+						for (Object o: (List)line) {
+							sb.append(prefix).append(o.toString());
+							prefix = ",";
+						}
+						lineString = sb.toString();
+					}else{
+						//As we handle different types of object, invoke toString
+						lineString = line.toString();						
+					}
+					writeBuffer.write(lineString);
 					//Track the amount of consumed bytes for debug purposes
 					inputBytes.getAndAdd(lineString.length());
+					writeBuffer.newLine();
 				}catch(IOException e){
 					logger.emitLog(this.getClass().getName() + " raised IOException: " + e.getMessage());
 					e.printStackTrace(System.err);
