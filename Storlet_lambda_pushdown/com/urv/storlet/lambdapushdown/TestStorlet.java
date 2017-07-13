@@ -44,6 +44,9 @@ public class TestStorlet {
 			StorletLogger logger = new StorletLogger(loggerFile.getFD());				
 			Map<String, String> parameters = new HashMap<String, String>();	
 			
+			
+			System.out.println("a,,b,c,d,e,,,,,".split(",").length);
+			
 			//selected_columns=0|1|5|7, where_clause=And(StringStartsWith(0|2015-01)|EqualTo(7|Paris))
 			parameters.put("add_header", "true");			
 			parameters.put("0-lambda", "java.util.function.Function<java.lang.String' java.util.List<java.lang.String>>|" +

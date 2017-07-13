@@ -14,6 +14,7 @@ import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -21,12 +22,15 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collector;
 import java.util.stream.Stream;
+
+import org.apache.commons.lang3.StringUtils;
 
 import com.ibm.storlet.common.IStorlet;
 import com.ibm.storlet.common.StorletException;
@@ -202,6 +206,7 @@ public class LambdaPushdownStorlet implements IStorlet {
 	@SuppressWarnings("unchecked")
 	protected void applyLambdasOnDataStream(InputStream is, OutputStream os) {
 		AtomicLong inputBytes = new AtomicLong(); 
+		AtomicBoolean isFirstLine = new AtomicBoolean(true);
 		long iniTime = System.nanoTime();
 		try{
 			//Convert InputStream as a Stream, and apply lambdas
@@ -219,8 +224,10 @@ public class LambdaPushdownStorlet implements IStorlet {
 			}
 				
 			//Then compute the lambdas and write the output
-			writeYourLambdas(dataStream).forEach(line -> {
+			/*Iterator<Object> streamIterator = writeYourLambdas(dataStream).iterator();
+			while (streamIterator.hasNext()){
 				try {		
+					Object line = streamIterator.next();
 					String lineString = "";
 					//Clean the standard toString() output of data structures like List
 					if (line instanceof List){
@@ -237,12 +244,52 @@ public class LambdaPushdownStorlet implements IStorlet {
 					writeBuffer.write(lineString);
 					//Track the amount of consumed bytes for debug purposes
 					inputBytes.getAndAdd(lineString.length());
-					writeBuffer.newLine();
+					if (streamIterator.hasNext()) {
+						writeBuffer.newLine();
+					} else {
+						logger.emitLog(new Date().toString() + " LAST LOG LINE: " + lineString);
+						System.err.println(new Date().toString() + " LAST LOG LINE: " + lineString);
+						int commas = StringUtils.countMatches(lineString, ",");
+						int commas2 = lineString.length() - lineString.replace(",", "").length();
+						if (commas!=10 || commas2 != 10){
+							logger.emitLog(new Date().toString() +  " INCOMPLETE LINEEEEEEEEEEE: " + lineString + "-> " + commas + "=" + commas2);
+							System.err.println(new Date().toString() + " INCOMPLETE LINEEEEEEEEEEE: " + lineString +" -> " + commas + "=" + commas2);										
+						}
+					}
+				}catch(IOException e){
+					logger.emitLog(this.getClass().getName() + " raised IOException: " + e.getMessage());
+					e.printStackTrace(System.err);
+				}
+			}*/
+			
+			writeYourLambdas(dataStream).forEach(line -> {
+				try {		
+					//Avoid adding an extra break line at the end of the stream
+					if (isFirstLine.get()) isFirstLine.set(false);
+					else writeBuffer.newLine();
+					
+					String lineString = "";
+					//Clean the standard toString() output of data structures like List
+					if (line instanceof List){
+						StringBuilder sb = new StringBuilder();
+						String prefix = "";
+						for (Object o: (List)line) {
+							sb.append(prefix).append(o.toString());
+							prefix = ",";
+						}
+						lineString = sb.toString();
+					//As we handle different types of object, invoke toString
+					}else lineString = line.toString();						
+					
+					writeBuffer.write(lineString);
+					//Track the amount of consumed bytes for debug purposes
+					inputBytes.getAndAdd(lineString.length());
 				}catch(IOException e){
 					logger.emitLog(this.getClass().getName() + " raised IOException: " + e.getMessage());
 					e.printStackTrace(System.err);
 				}
 			});
+			
 			logger.emitLog("Closing the streams after lambda execution...");
 			writeBuffer.close();
 			is.close();
