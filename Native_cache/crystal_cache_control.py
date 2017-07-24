@@ -75,7 +75,6 @@ class CacheControl(AbstractFilter):
                 self.cached_object = open(CACHE_PATH + object_id, 'w')
                 return FilterIter(crystal_iter, 10, self._filter_put)
 
-        #return crystal_iter
         return req_resp.environ['wsgi.input']
 
     def _put_object(self, request, crystal_iter):
