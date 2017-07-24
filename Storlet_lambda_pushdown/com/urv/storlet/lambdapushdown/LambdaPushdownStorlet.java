@@ -14,12 +14,15 @@ import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -27,12 +30,14 @@ import java.util.regex.Pattern;
 import java.util.stream.Collector;
 import java.util.stream.Stream;
 
-import org.openstack.storlet.common.IStorlet;
-import org.openstack.storlet.common.StorletException;
-import org.openstack.storlet.common.StorletInputStream;
-import org.openstack.storlet.common.StorletLogger;
-import org.openstack.storlet.common.StorletObjectOutputStream;
-import org.openstack.storlet.common.StorletOutputStream;
+import org.apache.commons.lang3.StringUtils;
+
+import com.ibm.storlet.common.IStorlet;
+import com.ibm.storlet.common.StorletException;
+import com.ibm.storlet.common.StorletInputStream;
+import com.ibm.storlet.common.StorletLogger;
+import com.ibm.storlet.common.StorletObjectOutputStream;
+import com.ibm.storlet.common.StorletOutputStream;
 
 import pl.joegreen.lambdaFromString.LambdaFactory;
 import pl.joegreen.lambdaFromString.TypeReference;
@@ -201,6 +206,7 @@ public class LambdaPushdownStorlet implements IStorlet {
 	@SuppressWarnings("unchecked")
 	protected void applyLambdasOnDataStream(InputStream is, OutputStream os) {
 		AtomicLong inputBytes = new AtomicLong(); 
+		AtomicBoolean isFirstLine = new AtomicBoolean(true);
 		long iniTime = System.nanoTime();
 		try{
 			//Convert InputStream as a Stream, and apply lambdas
@@ -217,12 +223,65 @@ public class LambdaPushdownStorlet implements IStorlet {
 				dataStream = dataStream.sequential();
 			}
 				
-			//Then compute the lambdas
-			writeYourLambdas(dataStream).forEach(line -> {	
-				try {
-					String lineString = line.toString();
-					writeBuffer.write(lineString);  //As we handle different types of object, invoke toString
-					writeBuffer.newLine();
+			//Then compute the lambdas and write the output
+			/*Iterator<Object> streamIterator = writeYourLambdas(dataStream).iterator();
+			while (streamIterator.hasNext()){
+				try {		
+					Object line = streamIterator.next();
+					String lineString = "";
+					//Clean the standard toString() output of data structures like List
+					if (line instanceof List){
+						StringBuilder sb = new StringBuilder();
+						String prefix = "";
+						for (Object o: (List)line) {
+							sb.append(prefix).append(o.toString());
+							prefix = ",";
+						}
+						lineString = sb.toString();
+					//As we handle different types of object, invoke toString
+					}else lineString = line.toString();						
+					
+					writeBuffer.write(lineString);
+					//Track the amount of consumed bytes for debug purposes
+					inputBytes.getAndAdd(lineString.length());
+					if (streamIterator.hasNext()) {
+						writeBuffer.newLine();
+					} else {
+						logger.emitLog(new Date().toString() + " LAST LOG LINE: " + lineString);
+						System.err.println(new Date().toString() + " LAST LOG LINE: " + lineString);
+						int commas = StringUtils.countMatches(lineString, ",");
+						int commas2 = lineString.length() - lineString.replace(",", "").length();
+						if (commas!=10 || commas2 != 10){
+							logger.emitLog(new Date().toString() +  " INCOMPLETE LINEEEEEEEEEEE: " + lineString + "-> " + commas + "=" + commas2);
+							System.err.println(new Date().toString() + " INCOMPLETE LINEEEEEEEEEEE: " + lineString +" -> " + commas + "=" + commas2);										
+						}
+					}
+				}catch(IOException e){
+					logger.emitLog(this.getClass().getName() + " raised IOException: " + e.getMessage());
+					e.printStackTrace(System.err);
+				}
+			}*/
+			
+			writeYourLambdas(dataStream).forEach(line -> {
+				try {		
+					//Avoid adding an extra break line at the end of the stream
+					if (isFirstLine.get()) isFirstLine.set(false);
+					else writeBuffer.newLine();
+					
+					String lineString = "";
+					//Clean the standard toString() output of data structures like List
+					if (line instanceof List){
+						StringBuilder sb = new StringBuilder();
+						String prefix = "";
+						for (Object o: (List)line) {
+							sb.append(prefix).append(o.toString());
+							prefix = ",";
+						}
+						lineString = sb.toString();
+					//As we handle different types of object, invoke toString
+					}else lineString = line.toString();						
+					
+					writeBuffer.write(lineString);
 					//Track the amount of consumed bytes for debug purposes
 					inputBytes.getAndAdd(lineString.length());
 				}catch(IOException e){
@@ -230,12 +289,25 @@ public class LambdaPushdownStorlet implements IStorlet {
 					e.printStackTrace(System.err);
 				}
 			});
+			
+			logger.emitLog("Closing the streams after lambda execution...");
 			writeBuffer.close();
 			is.close();
 			os.close();
 		} catch (IOException e1) {
 			logger.emitLog(this.getClass().getName() + " raised IOException 2: " + e1.getMessage());
 			e1.printStackTrace(System.err);
+		} catch (RuntimeException e2) {
+			//The idea of this catch is to solve the problem of interrupting streams at the client side
+			logger.emitLog(this.getClass().getName() + " raised RuntimeException: " + e2.getMessage());
+			e2.printStackTrace(System.err);
+		} finally {
+			try {
+				is.close();
+				os.close();
+			} catch (IOException e) {
+				logger.emitLog(this.getClass().getName() + " raised IOException in finally block: " + e.getMessage());
+			}
 		}		
 		logger.emitLog("STREAMS BW: " + ((inputBytes.get()/1024./1024.) + " MB /" +
 				((System.nanoTime()-iniTime)/1000000000.)) + " secs = " + ((inputBytes.get()/1024./1024.)/
@@ -273,7 +345,6 @@ public class LambdaPushdownStorlet implements IStorlet {
 			return Stream.of(((Optional) terminalOperation.apply(functionsOnStream)).get());
 		} catch (NoSuchElementException e) {
 			System.err.println("Terminal operation without result in Optional value.");
-			e.printStackTrace();
 		}
 		//Temporal default value
 		return Stream.of("");		

@@ -7,10 +7,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.openstack.storlet.common.StorletInputStream;
-import org.openstack.storlet.common.StorletLogger;
-import org.openstack.storlet.common.StorletObjectOutputStream;
-import org.openstack.storlet.common.StorletOutputStream;
+import com.ibm.storlet.common.StorletInputStream;
+import com.ibm.storlet.common.StorletLogger;
+import com.ibm.storlet.common.StorletObjectOutputStream;
+import com.ibm.storlet.common.StorletOutputStream;
 
 public class TestStorlet {
 	
@@ -43,19 +43,31 @@ public class TestStorlet {
 			FileOutputStream loggerFile = new FileOutputStream(LOGGER_FILE_NAME);					
 			StorletLogger logger = new StorletLogger(loggerFile.getFD());				
 			Map<String, String> parameters = new HashMap<String, String>();	
-			parameters.put("sequential", "true");
+			
+			
+			System.out.println("a,,b,c,d,e,,,,,".split(",").length);
 			
 			//selected_columns=0|1|5|7, where_clause=And(StringStartsWith(0|2015-01)|EqualTo(7|Paris))
-			//parameters.put("0-lambda", "None<>|skip(1)");
-			parameters.put("0-lambda", "java.util.function.Function<java.lang.String' java.util.List<java.lang.String>>|"
-				+ "map(s -> { java.util.List<String> l $ new java.util.ArrayList<String>(); String[] a $ s.split(\"'\"); "
-				+ "l.add(a[0]); l.add(a[1]); l.add(a[5]); l.add(a[7]);"
-				+ "return l; })");
-			parameters.put("1-lambda", "java.util.function.Predicate<java.util.List<java.lang.String>>|"
-					+ "filter(s -> (s.get(0).startsWith(\"2015-01\") && s.get(3).equals(\"Paris\")) || s.get(0).startsWith(\"date\"))");
-			parameters.put("2-lambda", "java.util.function.Function<java.util.List<java.lang.String>' java.lang.String>|"
-					+ "map(l -> l.toString().replace(\"[\", \"\").replace(\"]\", \"\"))");
+			parameters.put("add_header", "true");			
+			parameters.put("0-lambda", "java.util.function.Function<java.lang.String' java.util.List<java.lang.String>>|" +
+				"map(s -> { java.util.List<String> list = new java.util.ArrayList<String>(); " +
+				"String[] a = s.split(\",\"); list.add(a[0]); list.add(a[1]); list.add(\"\"); list.add(\"\"); " +
+				"list.add(a[4]); list.add(a[5]); list.add(\"\"); list.add(\"\"); list.add(\"\"); list.add(a[9]); list.add(a[10]);" + 
+				"return list;})");
+			parameters.put("1-lambda", "java.util.function.Predicate<java.util.List<java.lang.String>>|" +
+				"filter(s -> s.get(0).startsWith(\"2012\") && s.get(4).equals(\"elec\"))");			
+			/*parameters.put("2-lambda", "java.util.function.BinaryOperator<java.util.List<java.lang.String>>|" +
+			"reduce((l1, l2) -> { if (Double.valueOf(l1.get(1)) > Double.valueOf(l2.get(1))) return l1; " +
+			"else return l2;})");*/
 			
+			
+			/*parameters.put("0-lambda", "java.util.function.Function<java.lang.String' java.util.List<java.lang.String>>|"
+				+ "map(s -> { java.util.List<String> l $ new java.util.ArrayList<String>(); String[] a $ s.split(\"'\"); "
+				+ "l.add(a[0]); l.add(a[1]); l.add(\"\"); l.add(\"\"); l.add(\"\"); l.add(a[5]); l.add(\"\"); l.add(a[7]);"
+				+ "l.add(\"\"); l.add(\"\"); l.add(\"\"); return l; })");
+			parameters.put("1-lambda", "java.util.function.Predicate<java.util.List<java.lang.String>>|"
+					+ "filter(s -> s.get(0).startsWith(\"2015-01\") && s.get(7).equals(\"Paris\"))");
+			*/
 			/*
 			 * 1-lambda=java.util.function.Function<java.lang.String' java.util.List<java.lang.String>>|map(s -> { java.util.List<String> l $ new java.util.ArrayList<String>(); String[] a $ s.split("'");
 				l.add(a[0]); l.add(a[1]); l.add(a[5]); l.add(a[7]); return l; })
@@ -92,7 +104,7 @@ public class TestStorlet {
 			outfile.close();
 			outfile_md.close();
 			
-			for (int i=0; i<1; i++){
+			for (int i=0; i<5; i++){
 			
 				infile = new FileInputStream(INPUT_FILE_NAME);
 				outfile = new FileOutputStream(OUTPUT_FILE_NAME);
