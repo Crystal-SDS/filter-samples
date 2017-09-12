@@ -12,6 +12,7 @@ import json
 import copy
 import os
 import redis
+import threading
 
 
 CHUNK_SIZE = 65536
@@ -431,9 +432,14 @@ class IterLike(object):
 class Singleton(type):
     _instances = {}
 
+    # To have a thread-safe Singleton
+    __lock = threading.Lock()
+
     def __call__(cls, *args, **kwargs):  # @NoSelf
         if cls not in cls._instances:
-            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
+            with cls.__lock:
+                if cls not in cls._instances:
+                    cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
 
 
