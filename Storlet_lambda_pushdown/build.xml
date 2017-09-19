@@ -7,19 +7,19 @@
 	<target name="lambdapushdown">
 		<javac srcdir="com/urv/storlet/lambdapushdown/" destdir="bin" includeantruntime="false">
 			<classpath>
-		        <pathelement path="lib/SCommon.jar"/>
-				<pathelement path="lib/lambdaFromString.jar"/>
-				<pathelement path="lib/compiler-2.0.jar"/>
-				<pathelement path="lib/json-simple-1.1.jar"/>
-				<pathelement path="lib/ecj-4.5.1.jar"/>
-				<pathelement path="lib/tools.jar"/>
+		        <pathelement path="../lib/SCommon.jar"/>
+				<pathelement path="../lib/lambdaFromString.jar"/>
+				<pathelement path="../lib/compiler-2.0.jar"/>
+				<pathelement path="../lib/json-simple-1.1.jar"/>
+				<pathelement path="../lib/ecj-4.5.1.jar"/>
+				<pathelement path="../lib/tools.jar"/>
 			</classpath>
 		</javac>
 
-		 <jar destfile="target/lambdapushdown-1.0.jar" 
-			 	basedir="bin"
+		 <jar destfile="../target/lambdapushdown-1.0.jar" 
+			 	basedir="../bin"
 			 	includes="com/urv/storlet/lambdapushdown/*">
-		 	   	<zipgroupfileset dir="lib" includes="lambdaFromString.jar,compiler-2.0.jar,json-simple-1.1.jar,ecj-4.5.1.jar,tools.jar" excludes=""/>
+		 	   	<zipgroupfileset dir="../lib" includes="lambdaFromString.jar,compiler-2.0.jar,json-simple-1.1.jar,ecj-4.5.1.jar,tools.jar" excludes=""/>
 	     </jar>
 	</target>
 	

@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.ibm.storlet.common.StorletException;
 import com.ibm.storlet.common.StorletInputStream;
 import com.ibm.storlet.common.StorletLogger;
 import com.ibm.storlet.common.StorletObjectOutputStream;
@@ -43,9 +44,6 @@ public class TestStorlet {
 			FileOutputStream loggerFile = new FileOutputStream(LOGGER_FILE_NAME);					
 			StorletLogger logger = new StorletLogger(loggerFile.getFD());				
 			Map<String, String> parameters = new HashMap<String, String>();	
-			
-			
-			System.out.println("a,,b,c,d,e,,,,,".split(",").length);
 			
 			//selected_columns=0|1|5|7, where_clause=And(StringStartsWith(0|2015-01)|EqualTo(7|Paris))
 			parameters.put("add_header", "true");			
@@ -94,7 +92,7 @@ public class TestStorlet {
 			//		+ "SimpleEntry<String' Integer>::getKey' java.util.stream.Collectors.counting()))");
 
 			//parameters.put("1-lambda", "java.util.function.Predicate<java.lang.String>|filter(s -> s.contains(\"Hamlet\"))");	
-			
+			inputBytes = new File(INPUT_FILE_NAME).length();
 			System.out.println("before storlet");
 			long iniTime = System.nanoTime();
 			storlet.invoke(inputStreams, outStreams, parameters, logger);
@@ -107,8 +105,8 @@ public class TestStorlet {
 			for (int i=0; i<5; i++){
 			
 				infile = new FileInputStream(INPUT_FILE_NAME);
-				outfile = new FileOutputStream(OUTPUT_FILE_NAME);
-				outfile_md = new FileOutputStream(OUTPUT_MD_FILE_NAME);
+				outfile = new FileOutputStream(OUTPUT_FILE_NAME + String.valueOf(i));
+				outfile_md = new FileOutputStream(OUTPUT_MD_FILE_NAME + String.valueOf(i) );
 				inputStream1 = new StorletInputStream(infile.getFD(), md);
 		        outStream = new StorletObjectOutputStream(outfile.getFD(), md, outfile_md.getFD());	        
 		        inputStreams = new ArrayList<StorletInputStream>();
@@ -116,14 +114,12 @@ public class TestStorlet {
 		        outStreams = new ArrayList<StorletOutputStream>();
 		        outStreams.add(outStream);
 		        
-		        System.out.println("before storlet");
-				iniTime = System.nanoTime();
-				storlet.invoke(inputStreams, outStreams, parameters, logger);
-				System.out.println("after storlet: " + ((inputBytes/1024./1024.)/((System.nanoTime()-iniTime)/1000000000.)) + "MBps");
+		        StorletExecutionThread r = new StorletExecutionThread(inputStreams,outStreams, logger, parameters, new LambdaPushdownStorlet());
+		        new Thread(r).start();
 		        
-		        infile.close();
-				outfile.close();
-				outfile_md.close();
+		        //infile.close();
+				//outfile.close();
+				//outfile_md.close();
 			}
 			
 			loggerFile.close();
@@ -136,5 +132,34 @@ public class TestStorlet {
 		System.out.println("exiting main");
 	}
 
+}
 
+class StorletExecutionThread implements Runnable {
+	
+	ArrayList<StorletInputStream> inputStreams;
+	ArrayList<StorletOutputStream> outputStreams;
+	StorletLogger logger;				
+	Map<String, String> parameters;
+	LambdaPushdownStorlet storlet;
+	
+	public StorletExecutionThread(ArrayList<StorletInputStream> inputStreams,
+			ArrayList<StorletOutputStream> outputStreams, StorletLogger logger, Map<String, String> parameters,
+			LambdaPushdownStorlet storlet) {
+		this.inputStreams = inputStreams;
+		this.outputStreams = outputStreams;
+		this.logger = logger;
+		this.parameters = parameters;
+		this.storlet = storlet;
+	}
+
+	public void run() {
+		System.out.println("before storlet");
+		long iniTime = System.nanoTime();
+		try {
+			storlet.invoke(inputStreams, outputStreams, parameters, logger);
+		} catch (StorletException e) {
+			e.printStackTrace();
+		}
+		System.out.println("after storlet: " + ((System.nanoTime()-iniTime)/1000000000.) + "MBps");
+	}
 }
