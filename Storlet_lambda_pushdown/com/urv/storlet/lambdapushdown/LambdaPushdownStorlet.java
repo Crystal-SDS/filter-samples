@@ -12,6 +12,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.math.BigDecimal;
 import java.nio.charset.Charset;
+import java.time.Instant;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -75,7 +76,8 @@ public class LambdaPushdownStorlet implements IStorlet {
 	
 	//Classes that can be used within lambdas for compilation
 	protected LambdaFactory lambdaFactory = LambdaFactory.get(LambdaFactoryConfiguration.get()
-			.withImports(BigDecimal.class, Arrays.class, Set.class, Map.class, SimpleEntry.class, Date.class));
+			.withImports(BigDecimal.class, Arrays.class, Set.class, Map.class, SimpleEntry.class, 
+					Date.class, Instant.class));
 		
 	
 	//This map stores the signature of a lambda as a key and the lambda object as a value.
@@ -236,16 +238,16 @@ public class LambdaPushdownStorlet implements IStorlet {
 					if (line instanceof List){
 						StringBuilder sb = new StringBuilder();
 						String prefix = "";
-						for (Object o: (List)line) {
+						for (Object o: (List) line) {
 							sb.append(prefix).append(o.toString());
 							prefix = ",";
 						}
-						lineString = sb.toString();
+						lineString = sb.append(System.lineSeparator()).toString();
 					//As we handle different types of object, invoke toString
-					}else lineString = line.toString();						
+					}else lineString = line.toString() + System.lineSeparator();						
 					
 					//TODO: How can we avoid the last line separator without synchronization?
-					writeBuffer.write(lineString + System.lineSeparator());		
+					writeBuffer.write(lineString);		
 					
 					//Track the amount of consumed bytes for debug purposes
 					inputBytes.getAndAdd(lineString.length());					
