@@ -10,27 +10,26 @@ import java.io.OutputStreamWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.math.BigDecimal;
 import java.nio.charset.Charset;
+import java.time.Instant;
+import java.util.AbstractMap.SimpleEntry;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collector;
 import java.util.stream.Stream;
-
-import org.apache.commons.lang3.StringUtils;
 
 import com.ibm.storlet.common.IStorlet;
 import com.ibm.storlet.common.StorletException;
@@ -40,6 +39,7 @@ import com.ibm.storlet.common.StorletObjectOutputStream;
 import com.ibm.storlet.common.StorletOutputStream;
 
 import pl.joegreen.lambdaFromString.LambdaFactory;
+import pl.joegreen.lambdaFromString.LambdaFactoryConfiguration;
 import pl.joegreen.lambdaFromString.TypeReference;
 
 /**
@@ -74,7 +74,11 @@ public class LambdaPushdownStorlet implements IStorlet {
 	protected Map<String, String> parameters = null;
 	private StorletLogger logger;
 	
-	protected LambdaFactory lambdaFactory = LambdaFactory.get();
+	//Classes that can be used within lambdas for compilation
+	protected LambdaFactory lambdaFactory = LambdaFactory.get(LambdaFactoryConfiguration.get()
+			.withImports(BigDecimal.class, Arrays.class, Set.class, Map.class, SimpleEntry.class, 
+					Date.class, Instant.class));
+		
 	
 	//This map stores the signature of a lambda as a key and the lambda object as a value.
 	//It acts as a cache of repeated lambdas to avoid compilation overhead of already compiled lambdas.
@@ -85,7 +89,6 @@ public class LambdaPushdownStorlet implements IStorlet {
 	private Pattern lambdaBodyExtraction = Pattern.compile("(map|filter|flatMap|collect|reduce)\\s*?\\(");
 	
 	private static final String LAMBDA_TYPE_AND_BODY_SEPARATOR = "|";
-	
 	//There is a problem using "," when passing lambdas as Storlet parameters, as the
 	//Storlet middleware treats every "," as a separation between key/value parameter pairs
 	private static final String COMMA_REPLACEMENT_IN_PARAMS = "'";
@@ -96,7 +99,8 @@ public class LambdaPushdownStorlet implements IStorlet {
 	private static final String noneType = "None<>";
 	
 	public LambdaPushdownStorlet() {
-		new CollectorCompilationHelper().initializeCollectorCache(collectorCache);
+		new GetCollectorHelper().initializeCollectorCache(collectorCache);
+		GetTypeReferenceHelper.initializeTypeReferenceCache();
 	}
 
 	@SuppressWarnings({ "unchecked", "rawtypes" })
@@ -206,7 +210,6 @@ public class LambdaPushdownStorlet implements IStorlet {
 	@SuppressWarnings("unchecked")
 	protected void applyLambdasOnDataStream(InputStream is, OutputStream os) {
 		AtomicLong inputBytes = new AtomicLong(); 
-		AtomicBoolean isFirstLine = new AtomicBoolean(true);
 		long iniTime = System.nanoTime();
 		try{
 			//Convert InputStream as a Stream, and apply lambdas
@@ -224,75 +227,43 @@ public class LambdaPushdownStorlet implements IStorlet {
 			}
 				
 			//Then compute the lambdas and write the output
-			/*Iterator<Object> streamIterator = writeYourLambdas(dataStream).iterator();
-			while (streamIterator.hasNext()){
-				try {		
-					Object line = streamIterator.next();
+			//FIXME: This is still showing problems of writing incomplete lines in rare occasions.
+			//We have to investigate if this is a problem of stream management in the storlet, or a
+			//concurrency management problem of the Storlets framework (only seem to occur under 
+			//parallel requests)
+			writeYourLambdas(dataStream).forEachOrdered(line -> {
+				try {							
 					String lineString = "";
 					//Clean the standard toString() output of data structures like List
 					if (line instanceof List){
 						StringBuilder sb = new StringBuilder();
 						String prefix = "";
-						for (Object o: (List)line) {
+						for (Object o: (List) line) {
 							sb.append(prefix).append(o.toString());
 							prefix = ",";
 						}
-						lineString = sb.toString();
+						lineString = sb.append(System.lineSeparator()).toString();
 					//As we handle different types of object, invoke toString
-					}else lineString = line.toString();						
+					}else lineString = line.toString() + System.lineSeparator();						
 					
-					writeBuffer.write(lineString);
+					//TODO: How can we avoid the last line separator without synchronization?
+					writeBuffer.write(lineString);		
+					
 					//Track the amount of consumed bytes for debug purposes
-					inputBytes.getAndAdd(lineString.length());
-					if (streamIterator.hasNext()) {
-						writeBuffer.newLine();
-					} else {
-						logger.emitLog(new Date().toString() + " LAST LOG LINE: " + lineString);
-						System.err.println(new Date().toString() + " LAST LOG LINE: " + lineString);
-						int commas = StringUtils.countMatches(lineString, ",");
-						int commas2 = lineString.length() - lineString.replace(",", "").length();
-						if (commas!=10 || commas2 != 10){
-							logger.emitLog(new Date().toString() +  " INCOMPLETE LINEEEEEEEEEEE: " + lineString + "-> " + commas + "=" + commas2);
-							System.err.println(new Date().toString() + " INCOMPLETE LINEEEEEEEEEEE: " + lineString +" -> " + commas + "=" + commas2);										
-						}
-					}
+					inputBytes.getAndAdd(lineString.length());					
 				}catch(IOException e){
 					logger.emitLog(this.getClass().getName() + " raised IOException: " + e.getMessage());
 					e.printStackTrace(System.err);
-				}
-			}*/
-			
-			writeYourLambdas(dataStream).forEach(line -> {
-				try {		
-					//Avoid adding an extra break line at the end of the stream
-					if (isFirstLine.get()) isFirstLine.set(false);
-					else writeBuffer.newLine();
-					
-					String lineString = "";
-					//Clean the standard toString() output of data structures like List
-					if (line instanceof List){
-						StringBuilder sb = new StringBuilder();
-						String prefix = "";
-						for (Object o: (List)line) {
-							sb.append(prefix).append(o.toString());
-							prefix = ",";
-						}
-						lineString = sb.toString();
-					//As we handle different types of object, invoke toString
-					}else lineString = line.toString();						
-					
-					writeBuffer.write(lineString);
-					//Track the amount of consumed bytes for debug purposes
-					inputBytes.getAndAdd(lineString.length());
-				}catch(IOException e){
-					logger.emitLog(this.getClass().getName() + " raised IOException: " + e.getMessage());
+				}catch (Exception e) {
+					logger.emitLog(this.getClass().getName() + " raised Exception: " + e.getMessage());
 					e.printStackTrace(System.err);
 				}
 			});
 			
 			logger.emitLog("Closing the streams after lambda execution...");
-			writeBuffer.close();
+			readBuffer.close();
 			is.close();
+			writeBuffer.close();
 			os.close();
 		} catch (IOException e1) {
 			logger.emitLog(this.getClass().getName() + " raised IOException 2: " + e1.getMessage());
@@ -309,7 +280,7 @@ public class LambdaPushdownStorlet implements IStorlet {
 				logger.emitLog(this.getClass().getName() + " raised IOException in finally block: " + e.getMessage());
 			}
 		}		
-		logger.emitLog("STREAMS BW: " + ((inputBytes.get()/1024./1024.) + " MB /" +
+		logger.emitLog("(forEachOrdered) STREAMS BW: " + ((inputBytes.get()/1024./1024.) + " MB /" +
 				((System.nanoTime()-iniTime)/1000000000.)) + " secs = " + ((inputBytes.get()/1024./1024.)/
 						((System.nanoTime()-iniTime)/1000000000.)) + " MBps");
 	}
@@ -468,7 +439,7 @@ public class LambdaPushdownStorlet implements IStorlet {
 	private Collector getCollectorObject(String lambdaSignature, String lambdaType) {
 		Collector function = null;
 		try {
-			return CollectorCompilationHelper.getCollectorObject(getLambdaBody(lambdaSignature), lambdaType);
+			return GetCollectorHelper.getCollectorObject(getLambdaBody(lambdaSignature), lambdaType);
 		} catch (SecurityException | IllegalArgumentException e) {
 			e.printStackTrace();
 		}		
@@ -487,8 +458,8 @@ public class LambdaPushdownStorlet implements IStorlet {
 		String supportedTypesMethod = "get" + methodName.substring(0,1).toUpperCase() + 
 				methodName.substring(1) + "Type";
 		try {
-			Method theMethod = SupportedLambdaTypes.class.getMethod(supportedTypesMethod, String.class);
-			return (TypeReference) theMethod.invoke(SupportedLambdaTypes.class, lambdaType);
+			Method theMethod = GetTypeReferenceHelper.class.getMethod(supportedTypesMethod, String.class);
+			return (TypeReference) theMethod.invoke(GetTypeReferenceHelper.class, lambdaType);
 		} catch (NoSuchMethodException | SecurityException | IllegalAccessException | 
 				IllegalArgumentException | InvocationTargetException e) {
 			e.printStackTrace();
