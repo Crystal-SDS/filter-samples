@@ -20,6 +20,7 @@ class Singleton(type):
             cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
 
+
 # crystal_cache_control.CacheControl has 3 points of interception:
 # 1. pre-get: to check if the file is in the cache
 # 2. post-get: to store an existing file in the cache
@@ -31,6 +32,15 @@ class CacheControl(AbstractFilter):
     def __init__(self, global_conf, filter_conf, logger):
         super(CacheControl, self).__init__(global_conf, filter_conf, logger)
         self.cache = BlockCache()
+
+    def _apply_filter(self, req_resp, data_iter):
+        method = req_resp.environ['REQUEST_METHOD']
+
+        if method == 'GET':
+            return self._get_object(req_resp, data_iter)
+
+        elif method == 'PUT':
+            return self._put_object(req_resp, data_iter)
 
     def _get_object(self, req_resp, crystal_iter):
 
