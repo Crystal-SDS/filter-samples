@@ -70,7 +70,7 @@ import pl.joegreen.lambdaFromString.TypeReference;
 public class LambdaPushdownStorlet implements IStorlet {
 	
 	protected final Charset CHARSET = Charset.forName("UTF-8");
-	protected final int BUFFER_SIZE = 32*1024;
+	protected final int BUFFER_SIZE = 128*1024;
 	
 	protected Map<String, String> parameters = null;
 	private StorletLogger logger;
