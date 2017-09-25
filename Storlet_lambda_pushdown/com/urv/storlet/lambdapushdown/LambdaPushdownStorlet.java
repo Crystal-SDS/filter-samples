@@ -99,7 +99,6 @@ public class LambdaPushdownStorlet implements IStorlet {
 	
 	private static final String noneType = "None<>";
 	
-	
 	public LambdaPushdownStorlet() {
 		new GetCollectorHelper().initializeCollectorCache(collectorCache);
 		GetTypeReferenceHelper.initializeTypeReferenceCache();
@@ -238,8 +237,7 @@ public class LambdaPushdownStorlet implements IStorlet {
 		//Write the results in a thread-safe manner	
 		try {
 			while (resultsIterator.hasNext()) {
-				String lineString = resultsIterator.next();
-				writeBuffer.write(lineString);
+				writeBuffer.write(resultsIterator.next());
 				if (resultsIterator.hasNext()) 
 					writeBuffer.newLine();
 			}
