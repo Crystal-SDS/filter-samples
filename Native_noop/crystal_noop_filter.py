@@ -21,7 +21,7 @@ class NoopFilter(AbstractFilter):
     def __init__(self, global_conf, filter_conf, logger):
         super(NoopFilter, self).__init__(global_conf, filter_conf, logger)
 
-    def _apply_filter(self, req_resp, data_iter):
+    def _apply_filter(self, req_resp, data_iter, parameters):
         return DataIter(data_iter, TIMEOUT, self._filter_chunk)
 
     def _filter_chunk(self, chunk):

@@ -33,7 +33,7 @@ class CacheControl(AbstractFilter):
         super(CacheControl, self).__init__(global_conf, filter_conf, logger)
         self.cache = BlockCache()
 
-    def _apply_filter(self, req_resp, data_iter):
+    def _apply_filter(self, req_resp, data_iter, parameters):
         method = req_resp.environ['REQUEST_METHOD']
 
         if method == 'GET':
