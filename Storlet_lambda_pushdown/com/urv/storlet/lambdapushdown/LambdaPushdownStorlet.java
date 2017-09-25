@@ -78,8 +78,7 @@ public class LambdaPushdownStorlet implements IStorlet {
 	//Classes that can be used within lambdas for compilation
 	protected LambdaFactory lambdaFactory = LambdaFactory.get(LambdaFactoryConfiguration.get()
 			.withImports(BigDecimal.class, Arrays.class, Set.class, Map.class, SimpleEntry.class, 
-					Date.class, Instant.class));
-		
+					Date.class, Instant.class));		
 	
 	//This map stores the signature of a lambda as a key and the lambda object as a value.
 	//It acts as a cache of repeated lambdas to avoid compilation overhead of already compiled lambdas.
@@ -210,7 +209,7 @@ public class LambdaPushdownStorlet implements IStorlet {
 	
 	@SuppressWarnings("unchecked")
 	protected void applyLambdasOnDataStream(InputStream is, OutputStream os) {
-		AtomicLong inputBytes = new AtomicLong(0);
+		Long inputBytes = 0L;
 		long iniTime = System.nanoTime();
 	
 		//Convert InputStream as a Stream, and apply lambdas
@@ -237,7 +236,9 @@ public class LambdaPushdownStorlet implements IStorlet {
 		//Write the results in a thread-safe manner	
 		try {
 			while (resultsIterator.hasNext()) {
-				writeBuffer.write(resultsIterator.next());
+				String lineString = resultsIterator.next();
+				writeBuffer.write(lineString);
+				inputBytes+=lineString.length();
 				if (resultsIterator.hasNext()) 
 					writeBuffer.newLine();
 			}
@@ -249,8 +250,8 @@ public class LambdaPushdownStorlet implements IStorlet {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		logger.emitLog("STREAMS BW: " + ((inputBytes.get()/1024./1024.) + " MB /" +
-			((System.nanoTime()-iniTime)/1000000000.)) + " secs = " + ((inputBytes.get()/1024./1024.)/
+		logger.emitLog("STREAMS BW: " + ((inputBytes/1024./1024.) + " MB /" +
+			((System.nanoTime()-iniTime)/1000000000.)) + " secs = " + ((inputBytes/1024./1024.)/
 					((System.nanoTime()-iniTime)/1000000000.)) + " MBps");
 	}
 	
