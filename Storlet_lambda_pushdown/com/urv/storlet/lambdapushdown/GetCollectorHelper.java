@@ -18,7 +18,7 @@ public class GetCollectorHelper {
 				 			"import java.util.stream.Collector; \n" +
 				 			"import java.util.AbstractMap.SimpleEntry; \n" +
 				 			"import java.util.Map; \n" +
-				 			"import " + COMPILED_JOB_PATH + ".IGetCollector; \n" +
+				 			"import com.urv.storlet.lambdapushdown.IGetCollector; \n" +
 				 			
 		                    "public class " + className + " implements IGetCollector {\n" +
 		                    "    public " + collectorType +" getCollector() {\n" +

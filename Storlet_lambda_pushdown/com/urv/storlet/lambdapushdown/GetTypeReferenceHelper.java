@@ -97,7 +97,7 @@ public class GetTypeReferenceHelper {
 				 			"import java.util.stream.Collector; \n" +
 				 			"import java.util.AbstractMap.SimpleEntry; \n" +
 				 			"import java.util.Map; \n" +
-				 			"import " + "test.java.storlet" + ".IGetTypeReference; \n" +
+				 			"import com.urv.storlet.lambdapushdown.IGetTypeReference; \n" +
 				 			"import pl.joegreen.lambdaFromString.TypeReference; \n " +
 				 			
 		                    "public class " + className + " implements IGetTypeReference {\n" +
