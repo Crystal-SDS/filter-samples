@@ -19,6 +19,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -69,7 +70,7 @@ import pl.joegreen.lambdaFromString.TypeReference;
 public class LambdaPushdownStorlet implements IStorlet {
 	
 	protected final Charset CHARSET = Charset.forName("UTF-8");
-	protected final int BUFFER_SIZE = 128*1024;
+	protected final int BUFFER_SIZE = 32*1024;
 	
 	protected Map<String, String> parameters = null;
 	private StorletLogger logger;
@@ -97,6 +98,7 @@ public class LambdaPushdownStorlet implements IStorlet {
 	private static final String SEQUENTIAL_STREAM = "sequential";
 	
 	private static final String noneType = "None<>";
+	
 	
 	public LambdaPushdownStorlet() {
 		new GetCollectorHelper().initializeCollectorCache(collectorCache);
@@ -209,80 +211,71 @@ public class LambdaPushdownStorlet implements IStorlet {
 	
 	@SuppressWarnings("unchecked")
 	protected void applyLambdasOnDataStream(InputStream is, OutputStream os) {
-		AtomicLong inputBytes = new AtomicLong(); 
+		AtomicLong inputBytes = new AtomicLong(0);
 		long iniTime = System.nanoTime();
-		try{
-			//Convert InputStream as a Stream, and apply lambdas
-			BufferedWriter writeBuffer = new BufferedWriter(new OutputStreamWriter(os, CHARSET), BUFFER_SIZE);
-			BufferedReader readBuffer = new BufferedReader(new InputStreamReader(is, CHARSET), BUFFER_SIZE); 
-			//Check if we have to write the first line of the file always
-			if (parameters.containsKey(ADD_FILE_HEADER)){
+	
+		//Convert InputStream as a Stream, and apply lambdas
+		BufferedWriter writeBuffer = new BufferedWriter(new OutputStreamWriter(os, CHARSET), BUFFER_SIZE);
+		BufferedReader readBuffer = new BufferedReader(new InputStreamReader(is, CHARSET), BUFFER_SIZE); 
+		//Check if we have to write the first line of the file always
+		if (parameters.containsKey(ADD_FILE_HEADER)){
+			try {
 				writeBuffer.write(readBuffer.readLine());
 				writeBuffer.newLine();
-			}
-			//By default the streams are parallel, but if ordering is necessary then convert it to sequential
-			Stream<String> dataStream = readBuffer.lines().parallel();
-			if (parameters.containsKey(SEQUENTIAL_STREAM)){
-				dataStream = dataStream.sequential();
-			}
-				
-			//Then compute the lambdas and write the output
-			//FIXME: This is still showing problems of writing incomplete lines in rare occasions.
-			//We have to investigate if this is a problem of stream management in the storlet, or a
-			//concurrency management problem of the Storlets framework (only seem to occur under 
-			//parallel requests)
-			writeYourLambdas(dataStream).forEachOrdered(line -> {
-				try {							
-					String lineString = "";
-					//Clean the standard toString() output of data structures like List
-					if (line instanceof List){
-						StringBuilder sb = new StringBuilder();
-						String prefix = "";
-						for (Object o: (List) line) {
-							sb.append(prefix).append(o.toString());
-							prefix = ",";
-						}
-						lineString = sb.append(System.lineSeparator()).toString();
-					//As we handle different types of object, invoke toString
-					}else lineString = line.toString() + System.lineSeparator();						
-					
-					//TODO: How can we avoid the last line separator without synchronization?
-					writeBuffer.write(lineString);		
-					
-					//Track the amount of consumed bytes for debug purposes
-					inputBytes.getAndAdd(lineString.length());					
-				}catch(IOException e){
-					logger.emitLog(this.getClass().getName() + " raised IOException: " + e.getMessage());
-					e.printStackTrace(System.err);
-				}catch (Exception e) {
-					logger.emitLog(this.getClass().getName() + " raised Exception: " + e.getMessage());
-					e.printStackTrace(System.err);
-				}
-			});
-			
-			logger.emitLog("Closing the streams after lambda execution...");
-			readBuffer.close();
-			is.close();
-			writeBuffer.close();
-			os.close();
-		} catch (IOException e1) {
-			logger.emitLog(this.getClass().getName() + " raised IOException 2: " + e1.getMessage());
-			e1.printStackTrace(System.err);
-		} catch (RuntimeException e2) {
-			//The idea of this catch is to solve the problem of interrupting streams at the client side
-			logger.emitLog(this.getClass().getName() + " raised RuntimeException: " + e2.getMessage());
-			e2.printStackTrace(System.err);
-		} finally {
-			try {
-				is.close();
-				os.close();
 			} catch (IOException e) {
-				logger.emitLog(this.getClass().getName() + " raised IOException in finally block: " + e.getMessage());
+				e.printStackTrace();
 			}
-		}		
-		logger.emitLog("(forEachOrdered) STREAMS BW: " + ((inputBytes.get()/1024./1024.) + " MB /" +
-				((System.nanoTime()-iniTime)/1000000000.)) + " secs = " + ((inputBytes.get()/1024./1024.)/
-						((System.nanoTime()-iniTime)/1000000000.)) + " MBps");
+		}
+		//By default the streams are parallel, but if ordering is necessary then convert it to sequential
+		Stream<String> dataStream = readBuffer.lines().parallel();
+		if (parameters.containsKey(SEQUENTIAL_STREAM))
+			dataStream = dataStream.sequential();
+					
+		//Create an iterator with the results of the computations of the lambdas
+		Iterator<String> resultsIterator = ((Stream<String>) writeYourLambdas(dataStream)
+												.map(s -> formatOutput(s)))
+												.iterator();
+		//Write the results in a thread-safe manner	
+		try {
+			while (resultsIterator.hasNext()) {
+				String lineString = resultsIterator.next();
+				writeBuffer.write(lineString);
+				if (resultsIterator.hasNext()) 
+					writeBuffer.newLine();
+			}
+			logger.emitLog("Closing the streams after lambda execution...");
+			writeBuffer.close();
+			is.close();
+			os.flush();
+			os.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		logger.emitLog("STREAMS BW: " + ((inputBytes.get()/1024./1024.) + " MB /" +
+			((System.nanoTime()-iniTime)/1000000000.)) + " secs = " + ((inputBytes.get()/1024./1024.)/
+					((System.nanoTime()-iniTime)/1000000000.)) + " MBps");
+	}
+	
+	/**
+	 * Make sure that the output of lambdas is in an understandable format for a
+	 * client. This is mainly needed to write the output of collections correctly.
+	 *  
+	 * @param line
+	 * @return formatted output
+	 */
+	private static String formatOutput(Object line) {
+		String lineString = "";
+		if (line instanceof List){
+			StringBuilder sb = new StringBuilder();
+			String prefix = "";
+			for (Object o: (List) line) {
+				sb.append(prefix).append(o.toString());
+				prefix = ",";
+			}
+			lineString = sb.toString();
+		//As we handle different types of object, invoke toString
+		}else lineString = line.toString();						
+		return lineString;
 	}
 	
 	/**

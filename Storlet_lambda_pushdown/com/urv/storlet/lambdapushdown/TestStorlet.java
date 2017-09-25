@@ -102,7 +102,7 @@ public class TestStorlet {
 			outfile.close();
 			outfile_md.close();
 			
-			for (int i=0; i<5; i++){
+			/*for (int i=0; i<1; i++){
 			
 				infile = new FileInputStream(INPUT_FILE_NAME);
 				outfile = new FileOutputStream(OUTPUT_FILE_NAME + String.valueOf(i));
@@ -122,7 +122,7 @@ public class TestStorlet {
 				//outfile_md.close();
 			}
 			
-			loggerFile.close();
+			loggerFile.close();*/
 			
 		}
 		catch (Exception e) {
