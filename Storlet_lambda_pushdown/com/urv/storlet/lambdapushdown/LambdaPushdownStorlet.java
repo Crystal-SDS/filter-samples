@@ -85,7 +85,7 @@ public class LambdaPushdownStorlet implements IStorlet {
 	//This map stores the signature of a lambda as a key and the lambda object as a value.
 	//It acts as a cache of repeated lambdas to avoid compilation overhead of already compiled lambdas.
 	protected Map<String, Function> lambdaCache = new HashMap<>();
-	protected Map<String, Collector> collectorCache = new HashMap<>();
+	//protected Map<String, Collector> collectorCache = new HashMap<>();
 	protected Map<String, Function> reducerCache = new HashMap<>();
 	
 	private Pattern lambdaBodyExtraction = Pattern.compile("(map|filter|flatMap|collect|reduce)\\s*?\\(");
@@ -101,7 +101,7 @@ public class LambdaPushdownStorlet implements IStorlet {
 	private static final String noneType = "None<>";
 	
 	public LambdaPushdownStorlet() {
-		new GetCollectorHelper().initializeCollectorCache(collectorCache);
+		GetCollectorHelper.initializeCollectorCache();
 		GetTypeReferenceHelper.initializeTypeReferenceCache();
 	}
 
@@ -132,33 +132,17 @@ public class LambdaPushdownStorlet implements IStorlet {
         	String lambdaType = lambdaTypeAndBody.substring(0, separatorPos);
         	String lambdaBody = lambdaTypeAndBody.substring(separatorPos+1);
         	
-        	//Check if we have already compiled this lambda and exists in the cache
-			if (lambdaCache.containsKey(lambdaBody)) {
-				pushdownFunctions.add(lambdaCache.get(lambdaBody));
-				continue;
-			}else if (reducerCache.containsKey(lambdaBody)){
-				pushdownReducer = reducerCache.get(lambdaBody);
-				hasTerminalLambda = true;
-				continue;
-			}else if (collectorCache.containsKey(lambdaBody)){
-				pushdownCollector = collectorCache.get(lambdaBody);
-				hasTerminalLambda = true;
-				continue;
-			}
-			
+        	//Check if we have already compiled this lambda and exists in the cache			
 			//Compile the lambda and add it to the cache
 			if (lambdaBody.startsWith("collect")){
 				pushdownCollector = getCollectorObject(lambdaBody, lambdaType);
-				collectorCache.put(lambdaBody, pushdownCollector);
 		        hasTerminalLambda = true;
 			}else if (lambdaBody.startsWith("reduce")){
-				pushdownReducer = getFunctionObject(lambdaBody, lambdaType);
-				reducerCache.put(lambdaBody, pushdownReducer);
+				pushdownReducer = getAndCacheCompiledFunction(lambdaBody, lambdaType, reducerCache);
 		        hasTerminalLambda = true;
 			} else { 
 				//Add the new compiled function to the list of functions to apply to the stream
-				lambdaCache.put(lambdaBody, getFunctionObject(lambdaBody, lambdaType));			
-				pushdownFunctions.add(lambdaCache.get(lambdaBody));
+				pushdownFunctions.add(getAndCacheCompiledFunction(lambdaBody, lambdaType, lambdaCache));
 			}
         }
         logger.emitLog("Number of lambdas to execute: " + pushdownFunctions.size());
@@ -171,6 +155,7 @@ public class LambdaPushdownStorlet implements IStorlet {
         		.reduce(c -> c, (c1, c2) -> (s -> c2.apply(c1.apply(s))));   
         Stream<Object> potentialTerminals = Arrays.asList(pushdownCollector, pushdownReducer).stream();
         logger.emitLog("Compilation time: " + (System.currentTimeMillis()-iniCompileTime) + "ms");
+        System.out.println("Compilation time: " + (System.currentTimeMillis()-iniCompileTime) + "ms");
         
         //Apply all the functions on each stream record
     	return hasTerminalLambda ? applyTerminalOperation((Stream) allPushdownFunctions.apply(stream), 
@@ -314,6 +299,7 @@ public class LambdaPushdownStorlet implements IStorlet {
 		//Temporal default value
 		return Stream.of("");		
 	}
+	
 	@SuppressWarnings("rawtypes")
 	private Stream applyTerminalOperation(Stream functionsOnStream, Object terminalOperation) {
 		if (terminalOperation instanceof Function) 
@@ -379,6 +365,14 @@ public class LambdaPushdownStorlet implements IStorlet {
 			e1.printStackTrace();
 		}		
 		return function;
+	}
+	
+	private Function getAndCacheCompiledFunction(String lambdaSignature, String lambdaType, Map<String, Function> cache){
+		if (cache.containsKey(lambdaSignature)) 
+			return cache.get(lambdaSignature);
+		Function lambda = getFunctionObject(lambdaSignature, lambdaType);
+		cache.put(lambdaSignature, lambda);
+		return lambda;
 	}
 	
 	private Object invokeMethodOnStream(Stream s, Method theMethod, String lambdaSignature) 

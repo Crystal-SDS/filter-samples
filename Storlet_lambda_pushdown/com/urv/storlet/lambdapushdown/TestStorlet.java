@@ -55,10 +55,14 @@ public class TestStorlet {
 					+ "split.get(8).startsWith(\"50\"))))");
 			parameters.put("2-lambda", "java.util.function.Function<java.util.List<java.lang.String>' java.lang.String>|"
 					+ "map(split -> split.get(3).substring(1' split.get(3).length()))");
-			parameters.put("3-lambda", "java.util.function.Function<java.lang.String' java.lang.Double>|"
+			parameters.put("3-lambda", "java.util.function.Function<java.lang.String' java.lang.Integer>|"
 					+ "map(s -> { try { return "
-									+ "new Double(new SimpleDateFormat(\"dd/MMM/yyyy:mm:ss\").parse(s).getTime()); "
+									+ " (int) new SimpleDateFormat(\"dd/MMM/yyyy:hh:mm:ss\").parse(s).getTime() / 3600000 - 223321; "
 							 + "}catch(Exception e){e.printStackTrace();}return null;})");
+			parameters.put("4-lambda", "java.util.function.Function<java.lang.Integer' java.util.AbstractMap.SimpleEntry<java.lang.Integer' java.lang.Integer>>|"
+					+ "map(l -> new SimpleEntry<Integer' Integer>(l' 1))");
+			parameters.put("5-lambda", "Collector|"
+					+ "collect(java.util.stream.Collectors.groupingBy(SimpleEntry<Integer' Integer>::getKey' java.util.stream.Collectors.counting()))");
 			
 			
 			/*parameters.put("0-lambda", "java.util.function.Function<java.lang.String' java.util.List<java.lang.String>>|" +
@@ -116,7 +120,7 @@ public class TestStorlet {
 			outfile.close();
 			outfile_md.close();
 			
-			for (int i=0; i<1; i++){
+			for (int i=0; i<4; i++){
 			
 				infile = new FileInputStream(INPUT_FILE_NAME);
 				outfile = new FileOutputStream(OUTPUT_FILE_NAME + String.valueOf(i));
