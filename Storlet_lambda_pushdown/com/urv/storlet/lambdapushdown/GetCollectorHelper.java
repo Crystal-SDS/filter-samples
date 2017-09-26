@@ -13,7 +13,7 @@ public class GetCollectorHelper {
 	private static Map<String, Collector> collectorCache = new HashMap<>();
 	
 	@SuppressWarnings("unused")
-	public static Collector getCollectorObject(String collectorSignature, String collectorType) {
+	public static synchronized Collector getCollectorObject(String collectorSignature, String collectorType) {
 		Collector result = collectorCache.get(collectorSignature);
 		if (result!=null) return result;
 		result = compileCollectorObject(collectorSignature, collectorType);

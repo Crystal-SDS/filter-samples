@@ -113,7 +113,7 @@ public class GetTypeReferenceHelper {
 		return getTypeReference.getTypeReference();
 	}
 	
-	private static TypeReference getOrCompileTypeReference(Map<String, TypeReference> theMap, String theKey) {
+	private static synchronized TypeReference getOrCompileTypeReference(Map<String, TypeReference> theMap, String theKey) {
 		TypeReference result = theMap.get(theKey);
 		if (result!=null) return result;
 		result = getTypeReferenceObject(theKey);
