@@ -26,10 +26,9 @@ public class GetCollectorHelper {
 		                    "    }\n" +
 		                    "}\n";
 		 
-		System.out.println(javaCode);
 		long iniTime = System.currentTimeMillis();	
 		IGetCollector getCollector = (IGetCollector) CompilationHelper.compileFromString(COMPILED_JOB_PATH, className, javaCode);
-		System.out.println("NANO TIME COMPILATION COLLECTOR: " + (System.currentTimeMillis()-iniTime));
+		System.out.println("Collector compilatoin time (ms): " + (System.currentTimeMillis()-iniTime));
 		return getCollector.getCollector();
 	}
 	

@@ -12,7 +12,9 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.math.BigDecimal;
 import java.nio.charset.Charset;
+import java.text.SimpleDateFormat;
 import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -78,7 +80,7 @@ public class LambdaPushdownStorlet implements IStorlet {
 	//Classes that can be used within lambdas for compilation
 	protected LambdaFactory lambdaFactory = LambdaFactory.get(LambdaFactoryConfiguration.get()
 			.withImports(BigDecimal.class, Arrays.class, Set.class, Map.class, SimpleEntry.class, 
-					Date.class, Instant.class));		
+					Date.class, Instant.class, SimpleDateFormat.class, DateTimeFormatter.class));		
 	
 	//This map stores the signature of a lambda as a key and the lambda object as a value.
 	//It acts as a cache of repeated lambdas to avoid compilation overhead of already compiled lambdas.
@@ -105,7 +107,6 @@ public class LambdaPushdownStorlet implements IStorlet {
 
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	protected Stream writeYourLambdas(Stream<String> stream) {
-		long initime = System.currentTimeMillis();
 		//list of functions to apply to each record
         List<Function<Stream, Stream>> pushdownFunctions = new ArrayList<>();
         Collector pushdownCollector = null;
@@ -115,8 +116,9 @@ public class LambdaPushdownStorlet implements IStorlet {
         //Sort the keys in the parameter map according to the desired order
         List<String> sortedMapKeys = new ArrayList<String>();
         sortedMapKeys.addAll(parameters.keySet());
-        Collections.sort(sortedMapKeys);
-        
+        Collections.sort(sortedMapKeys);        
+
+		long iniCompileTime = System.currentTimeMillis();
         //Iterate over the parameters that describe the functions to the applied to the stream,
         //compile and instantiate the appropriate lambdas, and add them to the list.
         for (String functionKey: sortedMapKeys){	
@@ -168,7 +170,7 @@ public class LambdaPushdownStorlet implements IStorlet {
         Function allPushdownFunctions = pushdownFunctions.stream()
         		.reduce(c -> c, (c1, c2) -> (s -> c2.apply(c1.apply(s))));   
         Stream<Object> potentialTerminals = Arrays.asList(pushdownCollector, pushdownReducer).stream();
-        logger.emitLog("Compilation time: " + (System.currentTimeMillis()-initime) + "ms");
+        logger.emitLog("Compilation time: " + (System.currentTimeMillis()-iniCompileTime) + "ms");
         
         //Apply all the functions on each stream record
     	return hasTerminalLambda ? applyTerminalOperation((Stream) allPushdownFunctions.apply(stream), 

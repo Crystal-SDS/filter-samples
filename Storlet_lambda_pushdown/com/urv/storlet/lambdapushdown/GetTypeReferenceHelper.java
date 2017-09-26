@@ -106,10 +106,10 @@ public class GetTypeReferenceHelper {
 		                    "    }\n" +
 		                    "}\n";
 		 
-		System.out.println(javaCode);
 		long iniTime = System.currentTimeMillis();	
-		IGetTypeReference getTypeReference = (IGetTypeReference) CompilationHelper.compileFromString("test.java.storlet", className, javaCode);
-		System.out.println("NANO TIME COMPILATION COLLECTOR: " + (System.currentTimeMillis()-iniTime));
+		IGetTypeReference getTypeReference = (IGetTypeReference) 
+				CompilationHelper.compileFromString("test.java.storlet", className, javaCode);
+		System.out.println("Type reference compilation time (ms): " + (System.currentTimeMillis()-iniTime));
 		return getTypeReference.getTypeReference();
 	}
 	
