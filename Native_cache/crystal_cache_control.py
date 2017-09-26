@@ -88,7 +88,7 @@ class CacheControl(AbstractFilter):
                                  ' stored in cache with ID: ' + object_id)
 
                 cached_object = open(CACHE_PATH + object_id, 'w')
-                return DataIter(crystal_iter, 10, self._filter_put)
+                return DataIter(crystal_iter, 10, cached_object, self._filter_put)
 
         return req_resp.environ['wsgi.input']
 
