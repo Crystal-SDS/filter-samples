@@ -1,5 +1,6 @@
 from crystal_filter_middleware.filters.abstract_filter import AbstractFilter
 from eventlet import Timeout
+import threading
 
 TIMEOUT = 10  # Timeout while reading data chunks
 CHUNK_SIZE = 65535
@@ -7,10 +8,13 @@ CHUNK_SIZE = 65535
 
 class Singleton(type):
     _instances = {}
+    __lock = threading.Lock()
 
     def __call__(cls, *args, **kwargs):  # @NoSelf
         if cls not in cls._instances:
-            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
+            with cls.__lock:
+                if cls not in cls._instances:
+                    cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
 
 

@@ -1,6 +1,8 @@
-from crystal_filter_middleware.filters.abstract_filter import AbstractFilter, FilterIter
+from crystal_filter_middleware.filters.abstract_filter import AbstractFilter
 from swift.common.swob import Request, Response
 from threading import Semaphore
+from eventlet import Timeout
+import threading
 import hashlib
 import time
 import os
@@ -10,14 +12,18 @@ ENABLE_CACHE = True
 CACHE_MAX_SIZE = 200*1024*1024*1024
 available_policies = {"LRU", "LFU"}
 CACHE_PATH = "/tmp/cache/"
+CHUNK_SIZE = 65535
 
 
 class Singleton(type):
     _instances = {}
+    __lock = threading.Lock()
 
     def __call__(cls, *args, **kwargs):  # @NoSelf
         if cls not in cls._instances:
-            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
+            with cls.__lock:
+                if cls not in cls._instances:
+                    cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
 
 
@@ -44,11 +50,9 @@ class CacheControl(AbstractFilter):
 
     def _get_object(self, req_resp, crystal_iter):
 
-        resp_headers = {}
-
         if isinstance(req_resp, Request):
 
-            # CHECK IF FILE IS IN CACHE
+            # Check if Object is in cache
             if os.path.exists(CACHE_PATH):
 
                 object_path = req_resp.environ['PATH_INFO']
@@ -57,14 +61,14 @@ class CacheControl(AbstractFilter):
                 object_id, object_size, object_etag = self.cache.access_cache("GET", object_id)
 
                 if object_id:
-                    self.logger.info('SDS Cache Filter - Object '+object_path+' in cache')
+                    self.logger.info('Cache Filter - Object '+object_path+' in cache')
                     resp_headers = {}
                     resp_headers['content-length'] = str(object_size)
                     resp_headers['etag'] = object_etag
 
                     cached_object = open(CACHE_PATH+object_id, 'r')
 
-                    # TODO: Return headers if necessary
+                    req_resp.response_headers = resp_headers
                     return cached_object
 
         elif isinstance(req_resp, Response):
@@ -80,10 +84,11 @@ class CacheControl(AbstractFilter):
                 for object_id in to_evict:
                     os.remove(CACHE_PATH + object_id)
 
-                self.logger.info('SDS Cache Filter (POST-GET) - Object ' + object_path + ' stored in cache with ID: ' + object_id)
+                self.logger.info('Cache Filter (POST-GET) - Object ' + object_path +
+                                 ' stored in cache with ID: ' + object_id)
 
-                self.cached_object = open(CACHE_PATH + object_id, 'w')
-                return FilterIter(crystal_iter, 10, self._filter_put)
+                cached_object = open(CACHE_PATH + object_id, 'w')
+                return DataIter(crystal_iter, 10, cached_object, self._filter_put)
 
         return req_resp.environ['wsgi.input']
 
@@ -100,13 +105,14 @@ class CacheControl(AbstractFilter):
             for object_id in to_evict:
                 os.remove(CACHE_PATH+object_id)
 
-            self.logger.info('SDS Cache Filter - Object '+object_path+' stored in cache with ID: '+object_id)
+            self.logger.info('SDS Cache Filter - Object '+object_path +
+                             ' stored in cache with ID: '+object_id)
 
-            self.cached_object = open(CACHE_PATH+object_id, 'w')
-            return FilterIter(crystal_iter, 10, self._filter_put)
+            cached_object = open(CACHE_PATH+object_id, 'w')
+            return DataIter(crystal_iter, 10, cached_object, self._filter_put)
 
-    def _filter_put(self, chunk):
-        self.cached_object.write(chunk)
+    def _filter_put(self, cached_object, chunk):
+        cached_object.write(chunk)
         return chunk
 
 
@@ -238,3 +244,113 @@ class BlockCache(object):
 
         for descriptor in self.descriptors:
             print "Object: ", descriptor.block_id, descriptor.last_access, descriptor.get_hits, descriptor.put_hits, descriptor.num_accesses, descriptor.size
+
+
+class DataIter(object):
+    def __init__(self, obj_data, timeout, cached_object, filter_method):
+        self.closed = False
+        self.obj_data = obj_data
+        self.timeout = timeout
+        self.buf = b''
+        self.cached_object = cached_object
+
+        self.filter = filter_method
+
+    def __iter__(self):
+        return self
+
+    def read_with_timeout(self, size):
+        try:
+            with Timeout(self.timeout):
+                if hasattr(self.obj_data, 'read'):
+                    chunk = self.obj_data.read(size)
+                else:
+                    chunk = self.obj_data.next()
+                chunk = self.filter(self.cached_object, chunk)
+        except Timeout:
+            self.close()
+            raise
+        except Exception:
+            self.close()
+            raise
+
+        return chunk
+
+    def next(self, size=CHUNK_SIZE):
+        if len(self.buf) < size:
+            self.buf += self.read_with_timeout(size - len(self.buf))
+            if self.buf == b'':
+                self.close()
+                raise StopIteration('Stopped iterator ex')
+
+        if len(self.buf) > size:
+            data = self.buf[:size]
+            self.buf = self.buf[size:]
+        else:
+            data = self.buf
+            self.buf = b''
+        return data
+
+    def _close_check(self):
+        if self.closed:
+            raise ValueError('I/O operation on closed file')
+
+    def read(self, size=64 * 1024):
+        self._close_check()
+        return self.next(size)
+
+    def readline(self, size=-1):
+        self._close_check()
+
+        # read data into self.buf if there is not enough data
+        while b'\n' not in self.buf and \
+              (size < 0 or len(self.buf) < size):
+            if size < 0:
+                chunk = self.read()
+            else:
+                chunk = self.read(size - len(self.buf))
+            if not chunk:
+                break
+            self.buf += chunk
+
+        # Retrieve one line from buf
+        data, sep, rest = self.buf.partition(b'\n')
+        data += sep
+        self.buf = rest
+
+        # cut out size from retrieved line
+        if size >= 0 and len(data) > size:
+            self.buf = data[size:] + self.buf
+            data = data[:size]
+
+        return data
+
+    def readlines(self, sizehint=-1):
+        self._close_check()
+        lines = []
+        try:
+            while True:
+                line = self.readline(sizehint)
+                if not line:
+                    break
+                lines.append(line)
+                if sizehint >= 0:
+                    sizehint -= len(line)
+                    if sizehint <= 0:
+                        break
+        except StopIteration:
+            pass
+        return lines
+
+    def close(self):
+        if self.closed:
+            return
+        try:
+            self.cached_object.close()
+            self.obj_data.close()
+        except AttributeError:
+            pass
+        self.closed = True
+
+    def __del__(self):
+        self.close()
