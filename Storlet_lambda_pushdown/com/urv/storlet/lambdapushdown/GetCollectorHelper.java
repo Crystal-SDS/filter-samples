@@ -7,8 +7,6 @@ import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
 public class GetCollectorHelper {
-	
-	private static final String COMPILED_JOB_PATH = "test.java.storlet";
 
 	private static Map<String, Collector> collectorCache = new HashMap<>();
 	
@@ -24,13 +22,7 @@ public class GetCollectorHelper {
 	public static Collector compileCollectorObject(String collectorSignature, String collectorType) {
 		
 		 String className = "Collector"+String.valueOf(Math.abs(collectorSignature.hashCode()));
-		 String javaCode = "package " + COMPILED_JOB_PATH + ";\n" +
-				 			"import java.util.stream.Collectors; \n" +
-				 			"import java.util.stream.Collector; \n" +
-				 			"import java.util.AbstractMap.SimpleEntry; \n" +
-				 			"import java.util.Map; \n" +
-				 			"import com.urv.storlet.lambdapushdown.IGetCollector; \n" +
-				 			
+		 String javaCode =  "import com.urv.storlet.lambdapushdown.IGetCollector; \n" +
 		                    "public class " + className + " implements IGetCollector {\n" +
 		                    "    public " + collectorType +" getCollector() {\n" +
 		                    "        return (" + collectorType + ")" + collectorSignature + ";\n" +
@@ -38,7 +30,7 @@ public class GetCollectorHelper {
 		                    "}\n";
 		 
 		long iniTime = System.currentTimeMillis();	
-		IGetCollector getCollector = (IGetCollector) CompilationHelper.compileFromString(COMPILED_JOB_PATH, className, javaCode);
+		IGetCollector getCollector = (IGetCollector) CompilationHelper.compileFromString(className, javaCode);
 		System.out.println("Collector compilatoin time (ms): " + (System.currentTimeMillis()-iniTime));
 		return getCollector.getCollector();
 	}

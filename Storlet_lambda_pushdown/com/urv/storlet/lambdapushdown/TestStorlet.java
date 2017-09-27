@@ -15,7 +15,7 @@ import com.ibm.storlet.common.StorletOutputStream;
 
 public class TestStorlet {
 	
-	public static final String INPUT_FILE_NAME = "input/apache.log";//"input/meter-new-15MB.csv";
+	public static final String INPUT_FILE_NAME = "input/100B.fastq"; //"input/apache.log";//"input/meter-new-15MB.csv";
 	public static final String OUTPUT_FILE_NAME = "input/meter.results"; // "/dev/null"; //
 	public static final String OUTPUT_MD_FILE_NAME = "input/output_record_md.txt";
 	public static final String LOGGER_FILE_NAME = "input/logger";	
@@ -46,8 +46,17 @@ public class TestStorlet {
 			Map<String, String> parameters = new HashMap<String, String>();	
 			
 			//selected_columns=0|1|5|7, where_clause=And(StringStartsWith(0|2015-01)|EqualTo(7|Paris))
-			//parameters.put("add_header", "true");		
-			parameters.put("0-lambda", "java.util.function.Function<java.lang.String' java.util.List<java.lang.String>>|"
+			//parameters.put("add_header", "true");
+			
+			parameters.put("0-lambda", "java.util.function.Predicate<java.lang.String>|"
+					+ "filter(s -> s.startsWith(\"A\") || s.startsWith(\"C\") || s.startsWith(\"G\") || s.startsWith(\"T\"))");
+			parameters.put("1-lambda", "java.util.function.Predicate<java.lang.String>|"
+					+ "filter(s -> s.contains(\"GATTACA\"))");
+			parameters.put("2-lambda", "java.util.function.Function<java.lang.String' java.util.ArrayList<java.lang.Double>>|"
+					+ "map(s -> { ArrayList<Double> result $ new ArrayList<>(); for (char c : s.toCharArray()) "
+					+ "result.add(new Double(((int) c) - 64)); return result; })");
+			
+			/*parameters.put("0-lambda", "java.util.function.Function<java.lang.String' java.util.List<java.lang.String>>|"
 					+ "map(s -> { java.util.List<String> l $ new java.util.ArrayList<String>(); String[] a $ s.split(\" \"); "
 							+ "for (String x : a) l.add(x); return l; })");
 			parameters.put("1-lambda", "java.util.function.Predicate<java.util.List<java.lang.String>>|"
@@ -63,7 +72,7 @@ public class TestStorlet {
 					+ "map(l -> new SimpleEntry<Integer' Integer>(l' 1))");
 			parameters.put("5-lambda", "Collector|"
 					+ "collect(java.util.stream.Collectors.groupingBy(SimpleEntry<Integer' Integer>::getKey' java.util.stream.Collectors.counting()))");
-			
+			*/
 			
 			/*parameters.put("0-lambda", "java.util.function.Function<java.lang.String' java.util.List<java.lang.String>>|" +
 				"map(s -> { java.util.List<String> list = new java.util.ArrayList<String>(); " +

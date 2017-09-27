@@ -91,12 +91,7 @@ public class GetTypeReferenceHelper {
 	public static TypeReference getTypeReferenceObject(String functionSignature) {
 		
 		 String className = "TypeReference"+String.valueOf(Math.abs(functionSignature.hashCode()));
-		 String javaCode = "package " + "test.java.storlet" + ";\n" +
-				 			"import java.util.stream.Collectors; \n" +
-				 			"import java.util.stream.Collector; \n" +
-				 			"import java.util.AbstractMap.SimpleEntry; \n" +
-				 			"import java.util.Map; \n" +
-				 			"import com.urv.storlet.lambdapushdown.IGetTypeReference; \n" +
+		 String javaCode =  "import com.urv.storlet.lambdapushdown.IGetTypeReference; \n" +
 				 			"import pl.joegreen.lambdaFromString.TypeReference; \n " +
 				 			
 		                    "public class " + className + " implements IGetTypeReference {\n" +
