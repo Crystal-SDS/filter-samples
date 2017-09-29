@@ -4,6 +4,7 @@ from threading import Semaphore
 from eventlet import Timeout
 import threading
 import hashlib
+import select
 import time
 import os
 
@@ -12,7 +13,7 @@ ENABLE_CACHE = True
 CACHE_MAX_SIZE = 200*1024*1024*1024
 available_policies = {"LRU", "LFU"}
 CACHE_PATH = "/tmp/cache/"
-CHUNK_SIZE = 65535
+CHUNK_SIZE = 65536
 
 
 class Singleton(type):
@@ -66,10 +67,10 @@ class CacheControl(AbstractFilter):
                     resp_headers['content-length'] = str(object_size)
                     resp_headers['etag'] = object_etag
 
-                    cached_object = open(CACHE_PATH+object_id, 'r')
+                    cached_object_fd = os.open(CACHE_PATH + object_id, os.O_RDONLY)
 
                     req_resp.response_headers = resp_headers
-                    return cached_object
+                    return FdIter(cached_object_fd, 10)
 
         elif isinstance(req_resp, Response):
 
@@ -295,7 +296,7 @@ class DataIter(object):
         if self.closed:
             raise ValueError('I/O operation on closed file')
 
-    def read(self, size=64 * 1024):
+    def read(self, size=CHUNK_SIZE):
         self._close_check()
         return self.next(size)
 
@@ -354,3 +355,51 @@ class DataIter(object):
 
     def __del__(self):
         self.close()
+
+
+class FdIter(DataIter):
+    def __init__(self, obj_data, timeout):
+        self.closed = False
+        self.obj_data = obj_data
+        self.timeout = timeout
+        self.buf = b''
+
+    def read_with_timeout(self, size):
+        try:
+            with Timeout(self.timeout):
+                chunk = os.read(self.obj_data, size)
+        except Timeout:
+            self.close()
+            raise
+        except Exception:
+            self.close()
+            raise
+        return chunk
+
+    def next(self, size=CHUNK_SIZE):
+        if len(self.buf) < size:
+            r, _, _ = select.select([self.obj_data], [], [], self.timeout)
+            if len(r) == 0:
+                self.close()
+
+            if self.obj_data in r:
+                self.buf += self.read_with_timeout(size - len(self.buf))
+                if self.buf == b'':
+                    self.close()
+                    raise StopIteration('Stopped iterator ex')
+            else:
+                raise StopIteration('Stopped iterator ex')
+
+        if len(self.buf) > size:
+            data = self.buf[:size]
+            self.buf = self.buf[size:]
+        else:
+            data = self.buf
+            self.buf = b''
+        return data
+
+    def close(self):
+        if self.closed:
+            return
+        os.close(self.obj_data)
+        self.closed = True
