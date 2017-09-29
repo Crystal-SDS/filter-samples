@@ -66,12 +66,16 @@ public class SupportedLambdaTypes {
 				new TypeReference<Predicate<SimpleEntry<String, Long>>>() {});
 		supportedFilterTypes.put("java.util.function.Predicate<java.lang.Long>", 		
 				new TypeReference<Predicate<Long>>() {});
+		supportedFilterTypes.put("java.util.function.Predicate<java.lang.Double>", 		
+				new TypeReference<Predicate<Double>>() {});
 		supportedFilterTypes.put("java.util.function.Predicate<java.util.List<java.lang.String>>", 		
 				new TypeReference<Predicate<java.util.List<java.lang.String>>>() {});
 		supportedFilterTypes.put("java.util.function.Predicate<java.util.List<java.lang.Integer>>", 		
 				new TypeReference<Predicate<java.util.List<java.lang.Integer>>>() {});
 		supportedFilterTypes.put("java.util.function.Predicate<java.util.List<java.lang.Long>>", 		
 				new TypeReference<Predicate<java.util.List<java.lang.Long>>>() {});
+		supportedFilterTypes.put("java.util.function.Predicate<java.util.List<java.lang.Double>>", 		
+				new TypeReference<Predicate<java.util.List<java.lang.Double>>>() {});
 		
 		supportedFlatMapTypes.put("java.util.function.Function<java.lang.String, java.util.stream.Stream<java.lang.String>>", 
 				new TypeReference<Function<String, Stream<String>>>(){});	
@@ -79,11 +83,15 @@ public class SupportedLambdaTypes {
 				new TypeReference<Function<String, Stream<Integer>>>(){});	
 		supportedFlatMapTypes.put("java.util.function.Function<java.lang.String, java.util.stream.Stream<java.lang.Long>>", 
 				new TypeReference<Function<String, Stream<Long>>>(){});	
+		supportedFlatMapTypes.put("java.util.function.Function<java.lang.String, java.util.stream.Stream<java.lang.Double>>", 
+				new TypeReference<Function<String, Stream<Double>>>(){});	
 		
 		supportedReduceTypes.put("java.util.function.BinaryOperator<java.lang.Integer>", 
 				new TypeReference<BinaryOperator<Integer>>(){});
 		supportedReduceTypes.put("java.util.function.BinaryOperator<java.lang.Long>", 
 				new TypeReference<BinaryOperator<Long>>(){});
+		supportedReduceTypes.put("java.util.function.BinaryOperator<java.lang.Double>", 
+				new TypeReference<BinaryOperator<Double>>(){});
 		supportedReduceTypes.put("java.util.function.BinaryOperator<java.lang.String>", 
 				new TypeReference<BinaryOperator<String>>(){});
 		supportedReduceTypes.put("java.util.function.BinaryOperator<java.util.List<java.lang.String>>", 

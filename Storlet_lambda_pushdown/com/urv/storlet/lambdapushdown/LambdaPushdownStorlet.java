@@ -369,10 +369,11 @@ public class LambdaPushdownStorlet implements IStorlet {
 	}
 	
 	private Function getAndCacheCompiledFunction(String lambdaSignature, String lambdaType, Map<String, Function> cache){
-		if (cache.containsKey(lambdaSignature)) 
-			return cache.get(lambdaSignature);
+		String lambdaKey = lambdaType+lambdaSignature;
+		if (cache.containsKey(lambdaKey)) 
+			return cache.get(lambdaKey);
 		Function lambda = getFunctionObject(lambdaSignature, lambdaType);
-		cache.put(lambdaSignature, lambda);
+		cache.put(lambdaKey, lambda);
 		return lambda;
 	}
 	
