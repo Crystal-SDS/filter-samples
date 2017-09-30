@@ -16,9 +16,9 @@ import socket
 CHUNK_SIZE = 65536
 MB = 1024*1024.
 # Check and control the data flow every interval
-SLEEP_CALCULATION_INTERVAL = 0.2
+SLEEP_CALCULATION_INTERVAL = 0.5
 # Maximum throughput of a single node in the system (Gb Ethernet = 110MB (APPROX))
-BW_MAX = 115
+BW_MAX = 100
 
 
 class Singleton(type):
@@ -48,7 +48,6 @@ class BandwidthControl(AbstractFilter):
         self.get_bw_control = {}
         self.put_bw_control = {}
 
-        self._start_useless_threads_monitoring()
         self._start_assignments_consumer()
 
     def _apply_filter(self, req_resp, data_iter, parameters):
@@ -94,7 +93,11 @@ class BandwidthControl(AbstractFilter):
 
         thd_id = project+"-"+storage_policy
 
-        if thd_id not in self.put_bw_control:
+        if thd_id in self.put_bw_control and self.put_bw_control[thd_id].alive:
+            thr = self.put_bw_control[thd_id]
+        else:
+            if thd_id in self.put_bw_control:
+                del self.put_bw_control[thd_id]
             self.logger.info("Bandwidth Differentiation - Creating new "
                              "PUT thread: "+project+":"+storage_policy)
 
@@ -108,12 +111,9 @@ class BandwidthControl(AbstractFilter):
             self.put_bw_control[thd_id] = thr
             thr.daemon = True
             thr.start()
-        else:
-            thr = self.put_bw_control[thd_id]
 
-        self.logger.info("Bandwidth Differentiation - Add stream to tenant")
         thr.add_stream(write_pipe, read_pipe)
-
+        self.logger.info("Bandwidth Differentiation - Added PU stream to control thread: "+thd_id)
         return DataFdIter(r, 10)
 
     def _get_object(self, response, data_iter):
@@ -131,7 +131,12 @@ class BandwidthControl(AbstractFilter):
         storage_policy = self._get_storage_policy_id(response)
 
         thd_id = project+"-"+storage_policy
-        if thd_id not in self.get_bw_control:
+
+        if thd_id in self.get_bw_control and self.get_bw_control[thd_id].alive:
+            thr = self.get_bw_control[thd_id]
+        else:
+            if thd_id in self.get_bw_control:
+                del self.get_bw_control[thd_id]
             self.logger.info("Bandwidth Differentiation - Creating new "
                              "GET thread: "+project+":"+storage_policy)
 
@@ -145,38 +150,10 @@ class BandwidthControl(AbstractFilter):
             self.get_bw_control[thd_id] = thr
             thr.daemon = True
             thr.start()
-        else:
-            thr = self.get_bw_control[thd_id]
 
         thr.add_stream(write_pipe, read_pipe)
-
+        self.logger.info("Bandwidth Differentiation - Added GET stream to control thread: "+thd_id)
         return DataFdIter(r, 10)
-
-    def _start_useless_threads_monitoring(self):
-        """
-        This method starts the threads responsible of cleaning threads dictionaries.
-        """
-        self.logger.info("Bandwidth Differentiation - Starting useless threads "
-                         "monitoring")
-        thbw_get = Thread(target=self._kill_threads, args=(self.get_bw_control,))
-        thbw_get.start()
-
-        thbw_put = Thread(target=self._kill_threads, args=(self.put_bw_control,))
-        thbw_put.start()
-
-    def _kill_threads(self, threads):
-        """
-        This methdod checks the threads which are already stopped,
-        and deletes them from the main dictionary.
-        """
-        while True:
-            eventlet.sleep(2)
-            '''Clean useless threads'''
-            for thread_key in threads.keys():
-                if not threads[thread_key].alive:
-                    self.logger.info("Bandwidth Differentiation - Killing "
-                                     "thread "+thread_key)
-                    del threads[thread_key]
 
     def _start_assignments_consumer(self):
         self.logger.info("Bandwidth Differentiation - Starting bandwidth "
@@ -301,17 +278,13 @@ class BandwidthThreadControl(Thread):
             bandwidth_estimation = round(mb/SLEEP_CALCULATION_INTERVAL, 2)
 
             # Calculate the deviation in percentage
-            slo_deviation = abs(bandwidth_estimation - self.bandwidth_limit)
+            slo_deviation = bandwidth_estimation - self.bandwidth_limit
             slo_deviation_percentage = (slo_deviation*100)/self.bandwidth_limit
-
             # Apply the calculated percentage in the current dynamic_sleep
             sleep_deviation = (self.dynamic_sleep*slo_deviation_percentage)/100
 
-            # Add or substract the sleep_deviation to calculate the new dynamic_sleep
-            if bandwidth_estimation < self.bandwidth_limit:
-                new_dynamic_sleep = self.dynamic_sleep - sleep_deviation
-            elif bandwidth_estimation > self.bandwidth_limit:
-                new_dynamic_sleep = self.dynamic_sleep + sleep_deviation
+            # Add the sleep_deviation to calculate the new dynamic_sleep
+            new_dynamic_sleep = self.dynamic_sleep + sleep_deviation
 
             previous_dynamic_sleep = self.dynamic_sleep
 
@@ -320,7 +293,9 @@ class BandwidthThreadControl(Thread):
                 self.total_sleep_mean += new_dynamic_sleep
                 self.dynamic_sleep_mean = self.total_sleep_mean/self.iters_mean
 
-            if new_dynamic_sleep/self.dynamic_sleep_mean < 1.2 and new_dynamic_sleep/self.dynamic_sleep_mean > 0.7:
+            sleep_ratio = new_dynamic_sleep/self.dynamic_sleep_mean
+
+            if sleep_ratio < 1.2 and sleep_ratio > 0.7:
                 self.counter += 1
                 self.bad_counter = 0
                 self.dynamic_sleep = abs(new_dynamic_sleep)
