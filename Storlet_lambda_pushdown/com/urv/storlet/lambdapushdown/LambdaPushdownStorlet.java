@@ -196,7 +196,7 @@ public class LambdaPushdownStorlet implements IStorlet {
 	}
 	
 	@SuppressWarnings("unchecked")
-	protected void applyLambdasOnDataStream(InputStream is, OutputStream os) {
+	protected void applyLambdasOnDataStream(InputStream is, OutputStream os) throws StorletException {
 		Long inputBytes = 0L;
 		long iniTime = System.nanoTime();
 	
@@ -222,6 +222,7 @@ public class LambdaPushdownStorlet implements IStorlet {
 												.map(s -> formatOutput(s)))
 												.iterator();
 		//Write the results in a thread-safe manner	
+		boolean correctProcessing = true;
 		try {
 			while (resultsIterator.hasNext()) {
 				String lineString = resultsIterator.next();
@@ -236,9 +237,14 @@ public class LambdaPushdownStorlet implements IStorlet {
 			os.flush();
 			os.close();
 		} catch (IOException e) {
-			e.printStackTrace();
+			logger.emitLog("IOException in lambda execution: " + e.getMessage());
+			correctProcessing = false;
 		}
-		logger.emitLog("STREAMS BW: " + ((inputBytes/1024./1024.) + " MB /" +
+		//The objective is to make Spark to execute again a GET on this object to retry
+		if (!correctProcessing) 
+			throw new StorletException("Problem processing data with lambdas!");
+		
+		logger.emitLog("(Exception) STREAMS BW: " + ((inputBytes/1024./1024.) + " MB /" +
 			((System.nanoTime()-iniTime)/1000000000.)) + " secs = " + ((inputBytes/1024./1024.)/
 					((System.nanoTime()-iniTime)/1000000000.)) + " MBps");
 	}
