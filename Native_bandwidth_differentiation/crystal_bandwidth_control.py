@@ -16,9 +16,9 @@ import socket
 CHUNK_SIZE = 65536
 MB = 1024*1024.
 # Check and control the data flow every interval
-SLEEP_CALCULATION_INTERVAL = 0.2
+SLEEP_CALCULATION_INTERVAL = 0.5
 # Maximum throughput of a single node in the system (Gb Ethernet = 110MB (APPROX))
-BW_MAX = 115
+BW_MAX = 100
 
 
 class Singleton(type):
@@ -47,9 +47,7 @@ class BandwidthControl(AbstractFilter):
 
         self.get_bw_control = {}
         self.put_bw_control = {}
-        self.ssync_thread = {}
 
-        self._delete_usless_threads()
         self._start_assignments_consumer()
 
     def _apply_filter(self, req_resp, data_iter, parameters):
@@ -68,7 +66,7 @@ class BandwidthControl(AbstractFilter):
         """
         This method returns the current project ID
         """
-        return req_resp.environ['PATH_INFO'].split('/')[2]
+        return req_resp.environ['PATH_INFO'].split('/')[2].split('_')[1]
 
     def _get_storage_policy_id(self, req_resp):
         """
@@ -93,9 +91,13 @@ class BandwidthControl(AbstractFilter):
         project = self._get_project_id(request)
         storage_policy = self._get_storage_policy_id(request)
 
-        thread_key = project+":"+storage_policy
+        thd_id = project+"-"+storage_policy
 
-        if thread_key not in self.put_bw_control:
+        if thd_id in self.put_bw_control and self.put_bw_control[thd_id].alive:
+            thr = self.put_bw_control[thd_id]
+        else:
+            if thd_id in self.put_bw_control:
+                del self.put_bw_control[thd_id]
             self.logger.info("Bandwidth Differentiation - Creating new "
                              "PUT thread: "+project+":"+storage_policy)
 
@@ -105,16 +107,13 @@ class BandwidthControl(AbstractFilter):
             else:
                 initial_bw = BW_MAX
 
-            thr = BandwidthThreadControl(self.logger, initial_bw)
-            self.put_bw_control[thread_key] = thr
+            thr = BandwidthThreadControl(thd_id, self.logger, initial_bw)
+            self.put_bw_control[thd_id] = thr
             thr.daemon = True
             thr.start()
-        else:
-            thr = self.put_bw_control[thread_key]
 
-        self.logger.info("Bandwidth Differentiation - Add stream to tenant")
         thr.add_stream(write_pipe, read_pipe)
-
+        self.logger.info("Bandwidth Differentiation - Added PU stream to control thread: "+thd_id)
         return DataFdIter(r, 10)
 
     def _get_object(self, response, data_iter):
@@ -131,8 +130,13 @@ class BandwidthControl(AbstractFilter):
         project = self._get_project_id(response)
         storage_policy = self._get_storage_policy_id(response)
 
-        thread_key = project+":"+storage_policy
-        if thread_key not in self.get_bw_control:
+        thd_id = project+"-"+storage_policy
+
+        if thd_id in self.get_bw_control and self.get_bw_control[thd_id].alive:
+            thr = self.get_bw_control[thd_id]
+        else:
+            if thd_id in self.get_bw_control:
+                del self.get_bw_control[thd_id]
             self.logger.info("Bandwidth Differentiation - Creating new "
                              "GET thread: "+project+":"+storage_policy)
 
@@ -142,42 +146,14 @@ class BandwidthControl(AbstractFilter):
             else:
                 initial_bw = BW_MAX
 
-            thr = BandwidthThreadControl(self.logger, initial_bw)
-            self.get_bw_control[thread_key] = thr
+            thr = BandwidthThreadControl(thd_id, self.logger, initial_bw)
+            self.get_bw_control[thd_id] = thr
             thr.daemon = True
             thr.start()
-        else:
-            thr = self.get_bw_control[thread_key]
 
         thr.add_stream(write_pipe, read_pipe)
-
+        self.logger.info("Bandwidth Differentiation - Added GET stream to control thread: "+thd_id)
         return DataFdIter(r, 10)
-
-    def _delete_usless_threads(self):
-        """
-        This method starts the threads responsible of cleaning threads dictionaries.
-        """
-        self.logger.info("Bandwidth Differentiation - Starting useless threads "
-                         "monitoring")
-        thbw_get = Thread(target=self._kill_threads, args=(self.get_bw_control,))
-        thbw_get.start()
-
-        thbw_put = Thread(target=self._kill_threads, args=(self.put_bw_control,))
-        thbw_put.start()
-
-    def _kill_threads(self, threads):
-        """
-        This methdod checks the threads which are already stopped,
-        and deletes them from the main dictionary.
-        """
-        while True:
-            eventlet.sleep(2)
-            '''Clean useless threads'''
-            for thread_key in threads.keys():
-                if not threads[thread_key].alive:
-                    self.logger.info("Bandwidth Differentiation - Killing "
-                                     "thread "+thread_key)
-                    del threads[thread_key]
 
     def _start_assignments_consumer(self):
         self.logger.info("Bandwidth Differentiation - Starting bandwidth "
@@ -187,11 +163,11 @@ class BandwidthControl(AbstractFilter):
         rabbit_port = 5672
         rabbit_user = 'openstack'
         rabbit_pass = 'openstack'
-        consumer_tag = 'bw_assignations'
+        exchange = 'amq.topic'
 
         host_name = socket.gethostname()
-        queue_bw = consumer_tag + ":" + host_name
         routing_key = host_name
+        queue_bw = "bandwidth_assignations:"+host_name
 
         credentials = pika.PlainCredentials(rabbit_user, rabbit_pass)
         parameters = pika.ConnectionParameters(host=rabbit_host,
@@ -200,22 +176,21 @@ class BandwidthControl(AbstractFilter):
         self.connection = pika.BlockingConnection(parameters)
         channel = self.connection.channel()
         channel.queue_declare(queue=queue_bw)
-        channel.exchange_declare(exchange=consumer_tag)
-        channel.queue_bind(exchange=consumer_tag, routing_key=routing_key, queue=queue_bw)
+        channel.queue_bind(exchange=exchange, routing_key=routing_key, queue=queue_bw)
         channel.basic_consume(self._bw_assignations, queue=queue_bw, no_ack=True)
 
         thbw_assignation = Thread(target=channel.start_consuming)
         thbw_assignation.start()
 
     def _bw_assignations(self, ch, m, properties, body):
-        _, project, method, storage_policy, _, bw = body.split('/')
+        project, method, storage_policy, bw = body.split('/')
         thread_key = project+":"+storage_policy
-        if method == "GET":
+        if method == "get":
             try:
                 self.get_bw_control[thread_key].update_bw_limit(float(bw))
             except KeyError:
                 pass
-        elif method == "PUT":
+        elif method == "put":
             try:
                 self.put_bw_control[thread_key].update_bw_limit(float(bw))
             except KeyError:
@@ -224,9 +199,9 @@ class BandwidthControl(AbstractFilter):
 
 class BandwidthThreadControl(Thread):
 
-    def __init__(self, log, initial_bw):
-
+    def __init__(self, thd_id, log, initial_bw):
         Thread.__init__(self)
+        self.thd_id = thd_id
         self.logger = log
 
         # Last instant at which a bw calculation has been done
@@ -274,12 +249,11 @@ class BandwidthThreadControl(Thread):
         This method calculates the initial sleep based on some magic numbers.
          ** EXPERIMENTAL **
         """
-        CHUNK_SIZE = 65536
         BEST_CHUNK_READ_TIME = 0.0002
 
-        max_iterations = int(round(((self.bandwidth_limit * SLEEP_CALCULATION_INTERVAL) * MB) / CHUNK_SIZE))
-        read_chunk = BEST_CHUNK_READ_TIME * max_iterations
-        self.calc_sleep = ((SLEEP_CALCULATION_INTERVAL - read_chunk) / max_iterations)
+        self.max_iterations = int(round(((self.bandwidth_limit * SLEEP_CALCULATION_INTERVAL) * MB) / CHUNK_SIZE))
+        read_chunk = BEST_CHUNK_READ_TIME * self.max_iterations
+        self.calc_sleep = ((SLEEP_CALCULATION_INTERVAL - read_chunk) / self.max_iterations)
 
         self.dynamic_sleep_mean = self.calc_sleep
         self.dynamic_sleep = self.calc_sleep
@@ -291,42 +265,41 @@ class BandwidthThreadControl(Thread):
     def _rate_control(self):
         while self.alive:
             time.sleep(SLEEP_CALCULATION_INTERVAL)
+            # Copy required counters
+            trabsferred_bytes = self.transferred_bytes_control
+            iterations = self.number_of_iterations
 
-            f = open("/tmp/bw_control.dat", 'a+')
-            f.write("----------------\n")
-            f.write("Queue: "+str(self.streams.qsize())+"\n")
-            f.write("Iters: "+str(self.number_of_iterations)+"\n")
+            # Reset counters for new interval calculation
+            self.transferred_bytes_control = 0
+            self.number_of_iterations = 0
 
-            '''Estimate the current transfer bw'''
-            bandwidth_estimation = round(float(self.transferred_bytes_control/MB)/SLEEP_CALCULATION_INTERVAL, 2)
-            f.write(str(self.bandwidth_limit)+"\n")
-            f.write(str(bandwidth_estimation)+"\n")
+            # Estimate the current transfer bw
+            mb = float(trabsferred_bytes/MB)
+            bandwidth_estimation = round(mb/SLEEP_CALCULATION_INTERVAL, 2)
 
-            slo_deviation = abs(bandwidth_estimation - self.bandwidth_limit)
+            # Calculate the deviation in percentage
+            slo_deviation = bandwidth_estimation - self.bandwidth_limit
             slo_deviation_percentage = (slo_deviation*100)/self.bandwidth_limit
-            sleep_precentage = (self.dynamic_sleep*slo_deviation_percentage)/100
+            # Apply the calculated percentage in the current dynamic_sleep
+            sleep_deviation = (self.dynamic_sleep*slo_deviation_percentage)/100
 
-            '''If we are under the expected bw, no sleep'''
-            if bandwidth_estimation < self.bandwidth_limit:
-                new_dynamic_sleep = self.dynamic_sleep - sleep_precentage
-            elif bandwidth_estimation > self.bandwidth_limit:
-                new_dynamic_sleep = self.dynamic_sleep + sleep_precentage
+            # Add the sleep_deviation to calculate the new dynamic_sleep
+            new_dynamic_sleep = self.dynamic_sleep + sleep_deviation
 
-            f.write("After: "+'{0:.6f}'.format(round(self.dynamic_sleep, 6))+"\n")
-            f.write("Sleep: "+'{0:.6f}'.format(round(new_dynamic_sleep, 6))+"\n")
+            previous_dynamic_sleep = self.dynamic_sleep
 
             if slo_deviation < 1.5:
                 self.iters_mean += 1
                 self.total_sleep_mean += new_dynamic_sleep
                 self.dynamic_sleep_mean = self.total_sleep_mean/self.iters_mean
 
-            if new_dynamic_sleep/self.dynamic_sleep_mean < 1.2 and new_dynamic_sleep/self.dynamic_sleep_mean > 0.7:
-                f.write(" --> GOOD <--\n")
+            sleep_ratio = new_dynamic_sleep/self.dynamic_sleep_mean
+
+            if sleep_ratio < 1.2 and sleep_ratio > 0.7:
                 self.counter += 1
                 self.bad_counter = 0
                 self.dynamic_sleep = abs(new_dynamic_sleep)
             else:
-                f.write(" --> BAAD <--\n")
                 self.counter = 0
                 self.bad_counter += 1
 
@@ -336,16 +309,23 @@ class BandwidthThreadControl(Thread):
                 else:
                     self.dynamic_sleep = self.dynamic_sleep_mean
 
-            f.write("Mean: "+'{0:.6f}'.format(round(self.dynamic_sleep_mean, 6))+"\n")
-            f.write("Calculated: "+'{0:.6f}'.format(round(self.calc_sleep, 6))+"\n")
-            f.write("Trusted Counter: "+str(self.counter)+"\n")
-            f.write("Bad Counter: "+str(self.bad_counter)+"\n")
+            f = open("/tmp/bw_control_"+self.thd_id+".dat", 'a+')
+            f.write("\n##############################\n")
+            f.write("Required Bandwidth : "+str(self.bandwidth_limit)+"\n")
+            f.write("Current Bandwidth  : "+str(bandwidth_estimation)+"\n")
+            f.write("-----\n")
+            f.write("Required Iterations : "+str(self.max_iterations)+"\n")
+            f.write("Current Iterations  : "+str(iterations)+"\n")
+            f.write("-----\n")
+            f.write("Prev. dynamic sleep: "+'{0:.6f}'.format(round(previous_dynamic_sleep, 6))+"\n")
+            f.write("New dynamic sleep  : "+'{0:.6f}'.format(round(new_dynamic_sleep, 6))+"\n")
+            f.write("-----\n")
+            f.write("Mean sleep  : "+'{0:.6f}'.format(round(self.dynamic_sleep_mean, 6))+"\n")
+            f.write("Calc. sleep : "+'{0:.6f}'.format(round(self.calc_sleep, 6))+"\n")
+            f.write("-----\n")
+            f.write("In Range sleep     : "+str(self.counter)+"\n")
+            f.write("Not in range sleep : "+str(self.bad_counter)+"\n")
             f.close()
-
-            '''Reset counters for new interval calculation'''
-            self.transferred_bytes_control = 0
-            self.number_of_iterations = 1
-            '''Next time to calculate'''
 
     def _read_chunk(self, reader):
         try:
