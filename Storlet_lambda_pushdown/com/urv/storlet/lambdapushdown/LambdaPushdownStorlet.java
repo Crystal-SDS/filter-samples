@@ -7,6 +7,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
@@ -72,7 +74,7 @@ import pl.joegreen.lambdaFromString.TypeReference;
 public class LambdaPushdownStorlet implements IStorlet {
 	
 	protected final Charset CHARSET = Charset.forName("UTF-8");
-	protected final int BUFFER_SIZE = 128*1024;
+	protected final int BUFFER_SIZE = 8*1024;
 	
 	protected Map<String, String> parameters = null;
 	private StorletLogger logger;
@@ -229,22 +231,24 @@ public class LambdaPushdownStorlet implements IStorlet {
 				writeBuffer.write(lineString);
 				inputBytes+=lineString.length();
 				if (resultsIterator.hasNext()) 
-					writeBuffer.newLine();
+					writeBuffer.newLine();				
 			}
-			logger.emitLog("Closing the streams after lambda execution...");
+			writeBuffer.flush();
 			writeBuffer.close();
-			is.close();
 			os.flush();
+			is.close();
 			os.close();
 		} catch (IOException e) {
-			logger.emitLog("IOException in lambda execution: " + e.getMessage());
+			StringWriter sw = new StringWriter();
+			e.printStackTrace(new PrintWriter(sw));
+			logger.emitLog("IOException in lambda execution: " +  sw.toString());
 			correctProcessing = false;
 		}
 		//The objective is to make Spark to execute again a GET on this object to retry
 		if (!correctProcessing) 
 			throw new StorletException("Problem processing data with lambdas!");
-		
-		logger.emitLog("(Exception) STREAMS BW: " + ((inputBytes/1024./1024.) + " MB /" +
+
+		logger.emitLog("(4)Lambdas BW: " + ((inputBytes/1024./1024.) + " MB /" +
 			((System.nanoTime()-iniTime)/1000000000.)) + " secs = " + ((inputBytes/1024./1024.)/
 					((System.nanoTime()-iniTime)/1000000000.)) + " MBps");
 	}
