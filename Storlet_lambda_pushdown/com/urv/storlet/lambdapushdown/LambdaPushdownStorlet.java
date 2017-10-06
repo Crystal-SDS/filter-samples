@@ -231,9 +231,9 @@ public class LambdaPushdownStorlet implements IStorlet {
 				writeBuffer.write(lineString);
 				inputBytes+=lineString.length();
 				if (resultsIterator.hasNext()) 
-					writeBuffer.newLine();				
+					writeBuffer.newLine();
+				writeBuffer.flush();				
 			}
-			writeBuffer.flush();
 			writeBuffer.close();
 			os.flush();
 			is.close();
@@ -248,7 +248,7 @@ public class LambdaPushdownStorlet implements IStorlet {
 		if (!correctProcessing) 
 			throw new StorletException("Problem processing data with lambdas!");
 
-		logger.emitLog("(4)Lambdas BW: " + ((inputBytes/1024./1024.) + " MB /" +
+		logger.emitLog(">>(8K)Lambdas BW: " + ((inputBytes/1024./1024.) + " MB /" +
 			((System.nanoTime()-iniTime)/1000000000.)) + " secs = " + ((inputBytes/1024./1024.)/
 					((System.nanoTime()-iniTime)/1000000000.)) + " MBps");
 	}
