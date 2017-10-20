@@ -2,7 +2,6 @@ import hashlib
 import time
 import os
 import select
-import swiftclient
 
 from crystal_filter_middleware.filters.abstract_filter import AbstractFilter
 from eventlet import Timeout
@@ -12,17 +11,15 @@ from threading import Semaphore, Lock, Thread
 
 
 ENABLE_CACHE = True
-# Cache size limit in bytes
-CACHE_MAX_SIZE = 20*1024*1024
+# Default cache size limit in bytes
+DEFAULT_CACHE_MAX_SIZE = 1024 * 1024  # 1 MB
 available_policies = {"LRU", "LFU"}
-CACHE_PATH = "/tmp/cache/prefetch"
-#CACHE_PATH = "/media/ramdisk"
-#CACHE_PATH = "/mnt/ssd/"
+DEFAULT_CACHE_PATH = "/tmp/cache"
+DEFAULT_EVICTION_POLICY = "LFU"
 CHUNK_SIZE = 65536
-PROXY_PATH = '/etc/swift/proxy-server.conf'
-
+PROXY_PATH = '/etc/swift/local-proxy-server-prefetch.conf'
 ACCEPTABLE_STATUS = [200]
-USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36'
+USER_AGENT = 'Crystal Filter Internal Client'
 
 
 class Singleton(type):
@@ -39,71 +36,85 @@ class Singleton(type):
         return cls._instances[cls]
 
 
-# crystal_prefetch_control.PrefetchControl has 3 points of interception:
-# 1. pre-get: to check if the file is in the cache
-# 2. post-get: to fill prefetching cache (with internal requests)
 class PrefetchControl(AbstractFilter):
+    """
+    crystal_prefetch_control.PrefetchControl has 1 point of interception:
+    1. pre-get: to check if the file is in the cache
+    The prefetch cache is filled on initialization (according to params cache_max_size, tenant_id and container.
+    """
 
     __metaclass__ = Singleton
 
     def __init__(self, global_conf, filter_conf, logger):
         super(PrefetchControl, self).__init__(global_conf, filter_conf, logger)
-        self.cache = BlockCache()
         self.logger = logger
 
-        # TODO Fill cache with prefetched files
-        self.logger.info("In PrefetchControl.__init__")
+        self.cache_max_size = self._get_cache_max_size()
+        self.cache_path = self._get_cache_path()
+        self.eviction_policy = self._get_eviction_policy()
+        self.tenant_id, self.container = self._get_tenant_container()
+
+        self.cache = BlockCache(self.cache_max_size, self.eviction_policy)
+
+        # Fill cache with prefetched files
         self.prefetch_thread = Thread(target=self.init_prefetching)
         self.prefetch_thread.daemon = True
         self.prefetch_thread.start()
 
+    def _get_cache_max_size(self):
+        cache_max_size = DEFAULT_CACHE_MAX_SIZE
+        if self.filter_conf['params']:
+            if 'cache_max_size' in self.filter_conf['params']:
+                cache_max_size = int(self.filter_conf['params']['cache_max_size'])
+        return cache_max_size
+
+    def _get_cache_path(self):
+        cache_path = DEFAULT_CACHE_PATH
+        if self.filter_conf['params']:
+            if 'cache_path' in self.filter_conf['params']:
+                cache_path = self.filter_conf['params']['cache_path']
+        return cache_path
+
+    def _get_eviction_policy(self):
+        eviction_policy = DEFAULT_EVICTION_POLICY
+        if self.filter_conf['params']:
+            if 'eviction_policy' in self.filter_conf['params']:
+                eviction_policy = self.filter_conf['params']['eviction_policy']
+        return eviction_policy
+
+    def _get_tenant_container(self):
+        tenant_id = 'dummy'
+        container = 'dummy'
+        if self.filter_conf['params']:
+            if 'tenant_id' in self.filter_conf['params']:
+                tenant_id = self.filter_conf['params']['tenant_id']
+            if 'container' in self.filter_conf['params']:
+                container = self.filter_conf['params']['container']
+        return tenant_id, container
+
     def _get_object(self, req_resp, crystal_iter):
 
         if isinstance(req_resp, Request):
-            # millis_start = int(round(time.time() * 1000))
-            # self.logger.info('SDS Cache Filter - Timestamp: ' + str(millis_start))
 
-            if 'X-Crystal-Prefetch' in req_resp.headers:
-                # Let pass this request to the object server
-                req_resp.headers.pop('X-Crystal-Prefetch', None)
-                return req_resp.environ['wsgi.input']
-            else:
-                # Check if Object is in cache
-                if os.path.exists(CACHE_PATH):
+            # Check if Object is in cache
+            if os.path.exists(self.cache_path):
 
-                    object_path = req_resp.environ['PATH_INFO']
-                    object_id = (hashlib.md5(object_path).hexdigest())
+                object_path = req_resp.environ['PATH_INFO']
+                object_id = (hashlib.md5(object_path).hexdigest())
 
-                    object_id, object_size, object_etag = self.cache.access_cache("GET", object_id)
+                object_id, object_size, object_etag, object_storage_policy_id = self.cache.access_cache("GET", object_id)
 
-                    if object_id:
-                        self.logger.info('Prefetch Filter - Object '+object_path+' in cache')
-                        resp_headers = {}
-                        resp_headers['Content-Length'] = str(object_size)
-                        resp_headers['Etag'] = object_etag
+                if object_id:
+                    self.logger.info('Prefetch Filter - Object ' + object_path + ' found in cache')
+                    resp_headers = {}
+                    resp_headers['Content-Length'] = str(object_size)
+                    resp_headers['Etag'] = object_etag
 
-                        cached_object_fd = os.open(CACHE_PATH + object_id, os.O_RDONLY)
+                    cached_object_fd = os.open(os.path.join(self.cache_path, object_id), os.O_RDONLY)
 
-                        # TODO: Return headers if necessary
-                        req_resp.response_headers = resp_headers
-                        return FpIter(cached_object_fd, 10)
-
-        # elif isinstance(req_resp, Response):
-        #
-        #     if os.path.exists(CACHE_PATH):
-        #         object_path = req_resp.environ['PATH_INFO']
-        #         object_size = int(req_resp.headers.get('Content-Length', ''))
-        #         object_etag = req_resp.headers.get('ETag', '')
-        #         object_id = (hashlib.md5(object_path).hexdigest())
-        #
-        #         to_evict = self.cache.access_cache("PUT", object_id, object_size, object_etag)
-        #         for object_id in to_evict:
-        #             os.remove(CACHE_PATH + object_id)
-        #
-        #         self.logger.info('Prefetch Filter (POST-GET) - Object ' + object_path + ' stored in cache with ID: ' + object_id)
-        #
-        #         cached_object = open(CACHE_PATH + object_id, 'w')
-        #         return DataIter(crystal_iter, 10, cached_object, self._filter_put)
+                    req_resp.response_headers = resp_headers
+                    req_resp.environ['HTTP_X_BACKEND_STORAGE_POLICY_INDEX'] = object_storage_policy_id
+                    return FdIter(cached_object_fd, 10)
 
         return req_resp.environ['wsgi.input']
 
@@ -112,53 +123,49 @@ class PrefetchControl(AbstractFilter):
         return chunk
 
     def init_prefetching(self):
-        #while self.alive:
-        self.logger.info('In init_prefetching')
-        time.sleep(2)
+        time.sleep(1)
 
-        tenant_id = '366756dbfd024e0aa7f204a7498dfcfa'
-        container = 'data1'
-        object_name = 'template.tex'
-        object_path = '/v1/AUTH_' + tenant_id + '/' + container + '/' + object_name
-        object_id = hashlib.md5(object_path).hexdigest()
+        account = 'AUTH_' + self.tenant_id
+        self.download(account, self.container, USER_AGENT)
 
-        if not self.token:
-            self._get_admin_token()
-
-        self.download(object_id, tenant_id, container, object_name, USER_AGENT, self.token)
-
-    def download(self, oid, acc, container, name, u_agent, token, delay=0, request_tries=3):
-        print 'Prefetching object with InternalClient: ' + oid + ' after ' + str(delay.total_seconds()) + ' seconds of delay.'
-        time.sleep(delay.total_seconds())
+    def download(self, acc, container, u_agent, delay=0, request_tries=3):
+        self.logger.info('Prefetching objects with InternalClient with ' + str(delay) + ' seconds of delay.')
+        time.sleep(delay)
         swift = InternalClient(PROXY_PATH, u_agent, request_tries=request_tries)
         headers = {}
-        headers['X-Auth-Token'] = token
-        headers['X-No-Prefetch'] = 'True'
-        status, head, it = swift.get_object(acc, container, name, headers, ACCEPTABLE_STATUS)
-        data = [el for el in it]
-        self.logger.info(str(data))
-        # return oid, data, head
 
-    def _get_admin_token(self):
-        """
-        Method called to obtain the admin credentials, which we need to made requests to Swift
-        """
-        admin_project = 'service'
-        admin_user = 'admin'
-        admin_passwd = 'admin'
-        admin_keystone_url = 'http://localhost:35357/v3'
-        try:
-            _, self.token = swiftclient.client.get_auth(admin_keystone_url,
-                                                        admin_project + ":" + admin_user,
-                                                        admin_passwd, auth_version="3")
-        except:
-            self.logger.error("There was an error getting a token from keystone")
-            raise Exception()
+        prefetch_list = []
+        bytes_count = 0
+        for o in swift.iter_objects(acc, container):
+            if bytes_count + int(o['bytes']) < self.cache_max_size:
+                prefetch_list.append(o['name'])
+                bytes_count += int(o['bytes'])
+            else:
+                break
+
+        for name in prefetch_list:
+            object_path = '/v1/' + acc + '/' + container + '/' + name
+            oid = hashlib.md5(object_path).hexdigest()
+
+            status, resp_headers, it = swift.get_object(acc, container, name, headers, ACCEPTABLE_STATUS)
+
+            object_size = int(resp_headers.get('Content-Length'))
+            object_etag = resp_headers.get('Etag')
+
+            object_storage_policy_id = '0'  # FIXME hardcoded
+            to_evict = self.cache.access_cache("PUT", oid, object_size, object_etag, object_storage_policy_id)
+            for ev_object_id in to_evict:
+                os.remove(os.path.join(self.cache_path, ev_object_id))
+
+            self.logger.info('Prefetch Filter - Object ' + name + ' stored in cache with ID: ' + oid)
+            with open(os.path.join(self.cache_path, oid), 'w') as f:
+                for el in it:
+                    f.write(el)
 
 
 class CacheObjectDescriptor(object):
 
-    def __init__(self, block_id, size, etag):
+    def __init__(self, block_id, size, etag, storage_policy_id):
         self.block_id = block_id
         self.last_access = time.time()
         self.get_hits = 0
@@ -166,6 +173,7 @@ class CacheObjectDescriptor(object):
         self.num_accesses = 0
         self.size = size
         self.etag = etag
+        self.storage_policy_id = storage_policy_id
 
     def get_hit(self):
         self.get_hits += 1
@@ -182,7 +190,7 @@ class CacheObjectDescriptor(object):
 
 class BlockCache(object):
 
-    def __init__(self):
+    def __init__(self, cache_max_size, eviction_policy):
         # This will contain the actual data of each block
         self.descriptors_dict = {}
         # Structure to store the cache metadata of each block
@@ -195,18 +203,19 @@ class BlockCache(object):
         self.reads = 0
         self.writes = 0
         self.cache_size_bytes = 0
+        self.cache_max_size = cache_max_size
 
         # Eviction policy
-        self.policy = "LFU"
+        self.policy = eviction_policy
         # Synchronize shared cache content
         self.semaphore = Semaphore()
 
-    def access_cache(self, operation='PUT', block_id=None, block_data=None, etag=None):
+    def access_cache(self, operation='PUT', block_id=None, block_data=None, etag=None, storage_policy_id=None):
         result = None
         if ENABLE_CACHE:
             self.semaphore.acquire()
             if operation == 'PUT':
-                result = self._put(block_id, block_data, etag)
+                result = self._put(block_id, block_data, etag, storage_policy_id)
             elif operation == 'GET':
                 result = self._get(block_id)
             else:
@@ -216,13 +225,13 @@ class BlockCache(object):
             self.semaphore.release()
         return result
 
-    def _put(self, block_id, block_size, etag):
+    def _put(self, block_id, block_size, etag, storage_policy_id):
         self.writes += 1
         to_evict = []
         # Check if the cache is full and if the element is new
-        if CACHE_MAX_SIZE <= (self.cache_size_bytes + block_size) and block_id not in self.descriptors_dict:
+        if self.cache_max_size <= (self.cache_size_bytes + block_size) and block_id not in self.descriptors_dict:
             # Evict as many files as necessary until having enough space for new one
-            while (CACHE_MAX_SIZE <= (self.cache_size_bytes + block_size)):
+            while self.cache_max_size <= (self.cache_size_bytes + block_size):
                 # Get the last element ordered by the eviction policy
                 self.descriptors, evicted = self.descriptors[:-1], self.descriptors[-1]
                 # Reduce the size of the cache
@@ -237,11 +246,12 @@ class BlockCache(object):
             descriptor = self.descriptors_dict[block_id]
             self.descriptors_dict[block_id].size = block_size
             self.descriptors_dict[block_id].etag = etag
+            self.descriptors_dict[block_id].storage_policy_id = storage_policy_id
             descriptor.put_hit()
             self.put_hits += 1
         else:
             # Add the new element to the cache
-            descriptor = CacheObjectDescriptor(block_id, block_size, etag)
+            descriptor = CacheObjectDescriptor(block_id, block_size, etag, storage_policy_id)
             self.descriptors.append(descriptor)
             self.descriptors_dict[block_id] = descriptor
             self.cache_size_bytes += block_size
@@ -256,9 +266,9 @@ class BlockCache(object):
         if block_id in self.descriptors_dict:
             self.descriptors_dict[block_id].get_hit()
             self.get_hits += 1
-            return block_id, self.descriptors_dict[block_id].size, self.descriptors_dict[block_id].etag
+            return block_id, self.descriptors_dict[block_id].size, self.descriptors_dict[block_id].etag, self.descriptors_dict[block_id].storage_policy_id
         self.misses += 1
-        return None, 0, ''
+        return None, 0, '', ''
 
     def _sort_descriptors(self):
         # Order the descriptor list depending on the policy
@@ -335,7 +345,7 @@ class DataIter(object):
         if self.closed:
             raise ValueError('I/O operation on closed file')
 
-    def read(self, size=64 * 1024):
+    def read(self, size=CHUNK_SIZE):
         self._close_check()
         return self.next(size)
 
@@ -396,15 +406,13 @@ class DataIter(object):
         self.close()
 
 
-class FpIter(object):
+class FdIter(DataIter):
     def __init__(self, obj_data, timeout):
+        super(FdIter, self).__init__(obj_data, timeout, None, None)
         self.closed = False
         self.obj_data = obj_data
         self.timeout = timeout
         self.buf = b''
-
-    def __iter__(self):
-        return self
 
     def read_with_timeout(self, size):
         try:
@@ -418,7 +426,7 @@ class FpIter(object):
             raise
         return chunk
 
-    def next(self, size=64 * 1024):
+    def next(self, size=CHUNK_SIZE):
         if len(self.buf) < size:
             r, _, _ = select.select([self.obj_data], [], [], self.timeout)
             if len(r) == 0:
@@ -440,62 +448,8 @@ class FpIter(object):
             self.buf = b''
         return data
 
-    def _close_check(self):
-        if self.closed:
-            raise ValueError('I/O operation on closed file')
-
-    def read(self, size=CHUNK_SIZE):
-        self._close_check()
-        return self.next(size)
-
-    def readline(self, size=-1):
-        self._close_check()
-
-        # read data into self.buf if there is not enough data
-        while b'\n' not in self.buf and \
-              (size < 0 or len(self.buf) < size):
-            if size < 0:
-                chunk = self.read()
-            else:
-                chunk = self.read(size - len(self.buf))
-            if not chunk:
-                break
-            self.buf += chunk
-
-        # Retrieve one line from buf
-        data, sep, rest = self.buf.partition(b'\n')
-        data += sep
-        self.buf = rest
-
-        # cut out size from retrieved line
-        if size >= 0 and len(data) > size:
-            self.buf = data[size:] + self.buf
-            data = data[:size]
-
-        return data
-
-    def readlines(self, sizehint=-1):
-        self._close_check()
-        lines = []
-        try:
-            while True:
-                line = self.readline(sizehint)
-                if not line:
-                    break
-                lines.append(line)
-                if sizehint >= 0:
-                    sizehint -= len(line)
-                    if sizehint <= 0:
-                        break
-        except StopIteration:
-            pass
-        return lines
-
     def close(self):
         if self.closed:
             return
         os.close(self.obj_data)
         self.closed = True
-
-    def __del__(self):
-        self.close()

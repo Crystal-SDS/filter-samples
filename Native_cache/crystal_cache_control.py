@@ -8,11 +8,11 @@ import time
 import os
 
 ENABLE_CACHE = True
-# Cache size limit in bytes
-CACHE_MAX_SIZE = 1000*1024*1024*1024
+# Default cache size limit in bytes
+DEFAULT_CACHE_MAX_SIZE = 1024 * 1024  # 1 MB
 available_policies = {"LRU", "LFU"}
-#CACHE_PATH = "/media/ramdisk/"
-CACHE_PATH = "/mnt/ssd/"
+DEFAULT_CACHE_PATH = "/tmp/cache"
+DEFAULT_EVICTION_POLICY = "LFU"
 CHUNK_SIZE = 65536
 
 
@@ -40,7 +40,33 @@ class CacheControl(AbstractFilter):
 
     def __init__(self, global_conf, filter_conf, logger):
         super(CacheControl, self).__init__(global_conf, filter_conf, logger)
-        self.cache = BlockCache()
+
+        self.cache_max_size = self._get_cache_max_size()
+        self.cache_path = self._get_cache_path()
+        self.eviction_policy = self._get_eviction_policy()
+
+        self.cache = BlockCache(self.cache_max_size, self.eviction_policy)
+
+    def _get_cache_max_size(self):
+        cache_max_size = DEFAULT_CACHE_MAX_SIZE
+        if self.filter_conf['params']:
+            if 'cache_max_size' in self.filter_conf['params']:
+                cache_max_size = int(self.filter_conf['params']['cache_max_size'])
+        return cache_max_size
+
+    def _get_cache_path(self):
+        cache_path = DEFAULT_CACHE_PATH
+        if self.filter_conf['params']:
+            if 'cache_path' in self.filter_conf['params']:
+                cache_path = self.filter_conf['params']['cache_path']
+        return cache_path
+
+    def _get_eviction_policy(self):
+        eviction_policy = DEFAULT_EVICTION_POLICY
+        if self.filter_conf['params']:
+            if 'eviction_policy' in self.filter_conf['params']:
+                eviction_policy = self.filter_conf['params']['eviction_policy']
+        return eviction_policy
 
     def _apply_filter(self, req_resp, data_iter, parameters):
         method = req_resp.environ['REQUEST_METHOD']
@@ -54,19 +80,14 @@ class CacheControl(AbstractFilter):
     def _get_object(self, req_resp, crystal_iter):
 
         if isinstance(req_resp, Request):
-            millis_start = int(round(time.time() * 1000))
-            self.logger.info('SDS Cache Filter - Timestamp: ' + str(millis_start))
 
             # Check if Object is in cache
-            if os.path.exists(CACHE_PATH):
+            if os.path.exists(self.cache_path):
 
                 object_path = req_resp.environ['PATH_INFO']
                 object_id = (hashlib.md5(object_path).hexdigest())
 
-                object_id, object_size, object_etag = self.cache.access_cache("GET", object_id)
-
-                millis = int(round(time.time() * 1000))
-                self.logger.info('Cache Filter - Timestamp: ' + str(millis) + ' (' + str(millis - millis_start) + ')')
+                object_id, object_size, object_etag, object_storage_policy_id = self.cache.access_cache("GET", object_id)
 
                 if object_id:
                     self.logger.info('Cache Filter - Object '+object_path+' in cache')
@@ -74,60 +95,75 @@ class CacheControl(AbstractFilter):
                     resp_headers['Content-Length'] = str(object_size)
                     resp_headers['Etag'] = object_etag
 
-                    #cached_object = open(CACHE_PATH+object_id, 'r')
-                    cached_object_fd = os.open(CACHE_PATH + object_id, os.O_RDONLY)
+                    # Using os.open() instead of python open() to avoid sequentialization
+                    cached_object_fd = os.open(os.path.join(self.cache_path, object_id), os.O_RDONLY)
 
                     req_resp.response_headers = resp_headers
+                    req_resp.environ['HTTP_X_BACKEND_STORAGE_POLICY_INDEX'] = object_storage_policy_id
                     return FdIter(cached_object_fd, 10)
 
         elif isinstance(req_resp, Response):
 
-            if os.path.exists(CACHE_PATH):
+            if os.path.exists(self.cache_path):
                 object_path = req_resp.environ['PATH_INFO']
+
                 object_size = int(req_resp.headers.get('Content-Length', ''))
                 object_etag = req_resp.headers.get('ETag', '')
+                object_storage_policy_id = self._get_storage_policy_id(req_resp)
                 object_id = (hashlib.md5(object_path).hexdigest())
 
-                to_evict = self.cache.access_cache("PUT", object_id, object_size, object_etag)
+                to_evict = self.cache.access_cache("PUT", object_id, object_size, object_etag, object_storage_policy_id)
 
-                for object_id in to_evict:
-                    os.remove(CACHE_PATH + object_id)
+                for ev_object_id in to_evict:
+                    os.remove(os.path.join(self.cache_path, ev_object_id))
 
                 self.logger.info('Cache Filter (POST-GET) - Object ' + object_path +
                                  ' stored in cache with ID: ' + object_id)
 
-                cached_object = open(CACHE_PATH + object_id, 'w')
+                cached_object = open(os.path.join(self.cache_path, object_id), 'w')
                 return DataIter(crystal_iter, 10, cached_object, self._filter_put)
 
         return req_resp.environ['wsgi.input']
 
     def _put_object(self, request, crystal_iter):
 
-        if os.path.exists(CACHE_PATH):
+        if os.path.exists(self.cache_path):
             object_path = request.environ['PATH_INFO']
             object_size = int(request.headers.get('Content-Length', ''))
             object_etag = request.headers.get('ETag', '')
+            object_storage_policy_id = self._get_storage_policy_id(request)
             object_id = (hashlib.md5(object_path).hexdigest())
 
-            to_evict = self.cache.access_cache("PUT", object_id, object_size, object_etag)
+            to_evict = self.cache.access_cache("PUT", object_id, object_size, object_etag, object_storage_policy_id)
 
-            for object_id in to_evict:
-                os.remove(CACHE_PATH+object_id)
+            for ev_object_id in to_evict:
+                os.remove(os.path.join(self.cache_path, ev_object_id))
 
             self.logger.info('SDS Cache Filter - Object '+object_path +
                              ' stored in cache with ID: '+object_id)
 
-            cached_object = open(CACHE_PATH+object_id, 'w')
+            cached_object = open(os.path.join(self.cache_path, object_id), 'w')
             return DataIter(crystal_iter, 10, cached_object, self._filter_put)
 
     def _filter_put(self, cached_object, chunk):
         cached_object.write(chunk)
         return chunk
 
+    def _get_storage_policy_id(self, request):
+        if 'HTTP_X_BACKEND_STORAGE_POLICY_INDEX' in request.environ:
+            storage_policy = request.environ['HTTP_X_BACKEND_STORAGE_POLICY_INDEX']
+        else:
+            project = request.environ['PATH_INFO'].split('/')[2]
+            container = request.environ['PATH_INFO'].split('/')[3]
+            info = request.environ['swift.infocache']
+            storage_policy = info['container/' + project + '/' + container]['storage_policy']
+
+        return storage_policy
+
 
 class CacheObjectDescriptor(object):
 
-    def __init__(self, block_id, size, etag):
+    def __init__(self, block_id, size, etag, storage_policy_id):
         self.block_id = block_id
         self.last_access = time.time()
         self.get_hits = 0
@@ -135,6 +171,7 @@ class CacheObjectDescriptor(object):
         self.num_accesses = 0
         self.size = size
         self.etag = etag
+        self.storage_policy_id = storage_policy_id
 
     def get_hit(self):
         self.get_hits += 1
@@ -151,7 +188,7 @@ class CacheObjectDescriptor(object):
 
 class BlockCache(object):
 
-    def __init__(self):
+    def __init__(self, cache_max_size, eviction_policy):
         # This will contain the actual data of each block
         self.descriptors_dict = {}
         # Structure to store the cache metadata of each block
@@ -164,18 +201,19 @@ class BlockCache(object):
         self.reads = 0
         self.writes = 0
         self.cache_size_bytes = 0
+        self.cache_max_size = cache_max_size
 
         # Eviction policy
-        self.policy = "LFU"
+        self.policy = eviction_policy
         # Synchronize shared cache content
         self.semaphore = Semaphore()
 
-    def access_cache(self, operation='PUT', block_id=None, block_data=None, etag=None):
+    def access_cache(self, operation='PUT', block_id=None, block_data=None, etag=None, storage_policy_id=None):
         result = None
         if ENABLE_CACHE:
             self.semaphore.acquire()
             if operation == 'PUT':
-                result = self._put(block_id, block_data, etag)
+                result = self._put(block_id, block_data, etag, storage_policy_id)
             elif operation == 'GET':
                 result = self._get(block_id)
             else:
@@ -185,13 +223,13 @@ class BlockCache(object):
             self.semaphore.release()
         return result
 
-    def _put(self, block_id, block_size, etag):
+    def _put(self, block_id, block_size, etag, storage_policy_id):
         self.writes += 1
         to_evict = []
         # Check if the cache is full and if the element is new
-        if CACHE_MAX_SIZE <= (self.cache_size_bytes + block_size) and block_id not in self.descriptors_dict:
+        if self.cache_max_size <= (self.cache_size_bytes + block_size) and block_id not in self.descriptors_dict:
             # Evict as many files as necessary until having enough space for new one
-            while (CACHE_MAX_SIZE <= (self.cache_size_bytes + block_size)):
+            while (self.cache_max_size <= (self.cache_size_bytes + block_size)):
                 # Get the last element ordered by the eviction policy
                 self.descriptors, evicted = self.descriptors[:-1], self.descriptors[-1]
                 # Reduce the size of the cache
@@ -206,11 +244,12 @@ class BlockCache(object):
             descriptor = self.descriptors_dict[block_id]
             self.descriptors_dict[block_id].size = block_size
             self.descriptors_dict[block_id].etag = etag
+            self.descriptors_dict[block_id].storage_policy_id = storage_policy_id
             descriptor.put_hit()
             self.put_hits += 1
         else:
             # Add the new element to the cache
-            descriptor = CacheObjectDescriptor(block_id, block_size, etag)
+            descriptor = CacheObjectDescriptor(block_id, block_size, etag, storage_policy_id)
             self.descriptors.append(descriptor)
             self.descriptors_dict[block_id] = descriptor
             self.cache_size_bytes += block_size
@@ -225,9 +264,9 @@ class BlockCache(object):
         if block_id in self.descriptors_dict:
             self.descriptors_dict[block_id].get_hit()
             self.get_hits += 1
-            return block_id, self.descriptors_dict[block_id].size, self.descriptors_dict[block_id].etag
+            return block_id, self.descriptors_dict[block_id].size, self.descriptors_dict[block_id].etag, self.descriptors_dict[block_id].storage_policy_id
         self.misses += 1
-        return None, 0, ''
+        return None, 0, '', ''
 
     def _sort_descriptors(self):
         # Order the descriptor list depending on the policy
@@ -365,9 +404,9 @@ class DataIter(object):
         self.close()
 
 
-
 class FdIter(DataIter):
     def __init__(self, obj_data, timeout):
+        super(FdIter, self).__init__(obj_data, timeout, None, None)
         self.closed = False
         self.obj_data = obj_data
         self.timeout = timeout
