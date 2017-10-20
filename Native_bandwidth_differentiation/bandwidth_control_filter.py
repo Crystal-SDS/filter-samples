@@ -4,6 +4,7 @@ from swift.common.request_helpers import SegmentedIterable
 from swift.common.utils import get_logger
 from swift.common.swob import wsgify
 from swift.common.utils import register_swift_info
+from threading import Lock
 import select
 import Queue
 import time
@@ -21,7 +22,23 @@ SLEEP_CALCULATION_INTERVAL = 0.5
 BW_MAX = 100
 
 
+class Singleton(type):
+    _instances = {}
+
+    # To have a thread-safe Singleton
+    __lock = Lock()
+
+    def __call__(cls, *args, **kwargs):  # @NoSelf
+        if cls not in cls._instances:
+            with cls.__lock:
+                if cls not in cls._instances:
+                    cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+
 class BandwidthControlFilter(object):
+
+    __metaclass__ = Singleton
 
     def __init__(self, app, conf):
         self.app = app
