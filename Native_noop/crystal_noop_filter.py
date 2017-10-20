@@ -12,14 +12,14 @@ class NoopFilter(object):
     def __init__(self, app, conf):
         self.app = app
         self.conf = conf
-        self.logger = get_logger(self.conf, log_route='metadata_filter')
+        self.logger = get_logger(self.conf, log_route='noop_filter')
         self.filter_data = self.conf['filter_data']
         self.parameters = self.filter_data['params']
 
         self.register_info()
 
     def register_info(self):
-        register_swift_info('metadata_filter')
+        register_swift_info('noop_filter')
 
     @wsgify
     def __call__(self, req):
