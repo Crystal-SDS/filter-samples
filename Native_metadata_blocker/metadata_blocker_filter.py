@@ -26,7 +26,6 @@ class MetadataBlockerFilter(object):
     def __call__(self, req):
         if req.method in ('PUT', 'POST'):
             blocked_tags = self.parameters['tags'].split('/')
-            print blocked_tags, req.headers
             for tag in blocked_tags:
                 if 'X-Object-Meta-'+tag in req.headers:
                     self.logger.info('Metadata Blocker Filter - "'+tag+'" tag not allowed')
