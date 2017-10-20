@@ -8,7 +8,7 @@ from swift.common.utils import register_swift_info
 import re
 
 
-class MetadataEnhancer(object):
+class TaggingFilter(object):
 
     def __init__(self, app, conf):
         self.app = app
@@ -51,6 +51,6 @@ def filter_factory(global_conf, **local_conf):
     conf = global_conf.copy()
     conf.update(local_conf)
 
-    def metadata_enhancer_filter(app):
-        return MetadataEnhancer(app, conf)
-    return metadata_enhancer_filter
+    def tagging_filter(app):
+        return TaggingFilter(app, conf)
+    return tagging_filter
