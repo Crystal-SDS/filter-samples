@@ -1,19 +1,28 @@
-from crystal_filter_middleware.filters.abstract_filter import AbstractFilter
-from eventlet import Timeout
-from swift.common.swob import Request, Response
-from threading import Semaphore, Lock
 import hashlib
-import select
 import time
 import os
+import select
+import swiftclient
+
+from crystal_filter_middleware.filters.abstract_filter import AbstractFilter
+from eventlet import Timeout
+from swift.common.internal_client import InternalClient
+from swift.common.swob import Request, Response
+from threading import Semaphore, Lock, Thread
+
 
 ENABLE_CACHE = True
 # Cache size limit in bytes
-CACHE_MAX_SIZE = 1000*1024*1024*1024
+CACHE_MAX_SIZE = 20*1024*1024
 available_policies = {"LRU", "LFU"}
-#CACHE_PATH = "/media/ramdisk/"
-CACHE_PATH = "/mnt/ssd/"
+CACHE_PATH = "/tmp/cache/prefetch"
+#CACHE_PATH = "/media/ramdisk"
+#CACHE_PATH = "/mnt/ssd/"
 CHUNK_SIZE = 65536
+PROXY_PATH = '/etc/swift/proxy-server.conf'
+
+ACCEPTABLE_STATUS = [200]
+USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36'
 
 
 class Singleton(type):
@@ -30,99 +39,121 @@ class Singleton(type):
         return cls._instances[cls]
 
 
-# crystal_cache_control.CacheControl has 3 points of interception:
+# crystal_prefetch_control.PrefetchControl has 3 points of interception:
 # 1. pre-get: to check if the file is in the cache
-# 2. post-get: to store an existing file in the cache
-# 3. pre-put: to store a new file in the cache
-class CacheControl(AbstractFilter):
+# 2. post-get: to fill prefetching cache (with internal requests)
+class PrefetchControl(AbstractFilter):
 
     __metaclass__ = Singleton
 
     def __init__(self, global_conf, filter_conf, logger):
-        super(CacheControl, self).__init__(global_conf, filter_conf, logger)
+        super(PrefetchControl, self).__init__(global_conf, filter_conf, logger)
         self.cache = BlockCache()
+        self.logger = logger
 
-    def _apply_filter(self, req_resp, data_iter, parameters):
-        method = req_resp.environ['REQUEST_METHOD']
-
-        if method == 'GET':
-            return self._get_object(req_resp, data_iter)
-
-        elif method == 'PUT':
-            return self._put_object(req_resp, data_iter)
+        # TODO Fill cache with prefetched files
+        self.logger.info("In PrefetchControl.__init__")
+        self.prefetch_thread = Thread(target=self.init_prefetching)
+        self.prefetch_thread.daemon = True
+        self.prefetch_thread.start()
 
     def _get_object(self, req_resp, crystal_iter):
 
         if isinstance(req_resp, Request):
-            millis_start = int(round(time.time() * 1000))
-            self.logger.info('SDS Cache Filter - Timestamp: ' + str(millis_start))
+            # millis_start = int(round(time.time() * 1000))
+            # self.logger.info('SDS Cache Filter - Timestamp: ' + str(millis_start))
 
-            # Check if Object is in cache
-            if os.path.exists(CACHE_PATH):
+            if 'X-Crystal-Prefetch' in req_resp.headers:
+                # Let pass this request to the object server
+                req_resp.headers.pop('X-Crystal-Prefetch', None)
+                return req_resp.environ['wsgi.input']
+            else:
+                # Check if Object is in cache
+                if os.path.exists(CACHE_PATH):
 
-                object_path = req_resp.environ['PATH_INFO']
-                object_id = (hashlib.md5(object_path).hexdigest())
+                    object_path = req_resp.environ['PATH_INFO']
+                    object_id = (hashlib.md5(object_path).hexdigest())
 
-                object_id, object_size, object_etag = self.cache.access_cache("GET", object_id)
+                    object_id, object_size, object_etag = self.cache.access_cache("GET", object_id)
 
-                millis = int(round(time.time() * 1000))
-                self.logger.info('Cache Filter - Timestamp: ' + str(millis) + ' (' + str(millis - millis_start) + ')')
+                    if object_id:
+                        self.logger.info('Prefetch Filter - Object '+object_path+' in cache')
+                        resp_headers = {}
+                        resp_headers['Content-Length'] = str(object_size)
+                        resp_headers['Etag'] = object_etag
 
-                if object_id:
-                    self.logger.info('Cache Filter - Object '+object_path+' in cache')
-                    resp_headers = {}
-                    resp_headers['Content-Length'] = str(object_size)
-                    resp_headers['Etag'] = object_etag
+                        cached_object_fd = os.open(CACHE_PATH + object_id, os.O_RDONLY)
 
-                    #cached_object = open(CACHE_PATH+object_id, 'r')
-                    cached_object_fd = os.open(CACHE_PATH + object_id, os.O_RDONLY)
+                        # TODO: Return headers if necessary
+                        req_resp.response_headers = resp_headers
+                        return FpIter(cached_object_fd, 10)
 
-                    req_resp.response_headers = resp_headers
-                    return FdIter(cached_object_fd, 10)
-
-        elif isinstance(req_resp, Response):
-
-            if os.path.exists(CACHE_PATH):
-                object_path = req_resp.environ['PATH_INFO']
-                object_size = int(req_resp.headers.get('Content-Length', ''))
-                object_etag = req_resp.headers.get('ETag', '')
-                object_id = (hashlib.md5(object_path).hexdigest())
-
-                to_evict = self.cache.access_cache("PUT", object_id, object_size, object_etag)
-
-                for object_id in to_evict:
-                    os.remove(CACHE_PATH + object_id)
-
-                self.logger.info('Cache Filter (POST-GET) - Object ' + object_path +
-                                 ' stored in cache with ID: ' + object_id)
-
-                cached_object = open(CACHE_PATH + object_id, 'w')
-                return DataIter(crystal_iter, 10, cached_object, self._filter_put)
+        # elif isinstance(req_resp, Response):
+        #
+        #     if os.path.exists(CACHE_PATH):
+        #         object_path = req_resp.environ['PATH_INFO']
+        #         object_size = int(req_resp.headers.get('Content-Length', ''))
+        #         object_etag = req_resp.headers.get('ETag', '')
+        #         object_id = (hashlib.md5(object_path).hexdigest())
+        #
+        #         to_evict = self.cache.access_cache("PUT", object_id, object_size, object_etag)
+        #         for object_id in to_evict:
+        #             os.remove(CACHE_PATH + object_id)
+        #
+        #         self.logger.info('Prefetch Filter (POST-GET) - Object ' + object_path + ' stored in cache with ID: ' + object_id)
+        #
+        #         cached_object = open(CACHE_PATH + object_id, 'w')
+        #         return DataIter(crystal_iter, 10, cached_object, self._filter_put)
 
         return req_resp.environ['wsgi.input']
-
-    def _put_object(self, request, crystal_iter):
-
-        if os.path.exists(CACHE_PATH):
-            object_path = request.environ['PATH_INFO']
-            object_size = int(request.headers.get('Content-Length', ''))
-            object_etag = request.headers.get('ETag', '')
-            object_id = (hashlib.md5(object_path).hexdigest())
-
-            to_evict = self.cache.access_cache("PUT", object_id, object_size, object_etag)
-
-            for object_id in to_evict:
-                os.remove(CACHE_PATH+object_id)
-
-            self.logger.info('SDS Cache Filter - Object '+object_path +
-                             ' stored in cache with ID: '+object_id)
-
-            cached_object = open(CACHE_PATH+object_id, 'w')
-            return DataIter(crystal_iter, 10, cached_object, self._filter_put)
 
     def _filter_put(self, cached_object, chunk):
         cached_object.write(chunk)
         return chunk
+
+    def init_prefetching(self):
+        #while self.alive:
+        self.logger.info('In init_prefetching')
+        time.sleep(2)
+
+        tenant_id = '366756dbfd024e0aa7f204a7498dfcfa'
+        container = 'data1'
+        object_name = 'template.tex'
+        object_path = '/v1/AUTH_' + tenant_id + '/' + container + '/' + object_name
+        object_id = hashlib.md5(object_path).hexdigest()
+
+        if not self.token:
+            self._get_admin_token()
+
+        self.download(object_id, tenant_id, container, object_name, USER_AGENT, self.token)
+
+    def download(self, oid, acc, container, name, u_agent, token, delay=0, request_tries=3):
+        print 'Prefetching object with InternalClient: ' + oid + ' after ' + str(delay.total_seconds()) + ' seconds of delay.'
+        time.sleep(delay.total_seconds())
+        swift = InternalClient(PROXY_PATH, u_agent, request_tries=request_tries)
+        headers = {}
+        headers['X-Auth-Token'] = token
+        headers['X-No-Prefetch'] = 'True'
+        status, head, it = swift.get_object(acc, container, name, headers, ACCEPTABLE_STATUS)
+        data = [el for el in it]
+        self.logger.info(str(data))
+        # return oid, data, head
+
+    def _get_admin_token(self):
+        """
+        Method called to obtain the admin credentials, which we need to made requests to Swift
+        """
+        admin_project = 'service'
+        admin_user = 'admin'
+        admin_passwd = 'admin'
+        admin_keystone_url = 'http://localhost:35357/v3'
+        try:
+            _, self.token = swiftclient.client.get_auth(admin_keystone_url,
+                                                        admin_project + ":" + admin_user,
+                                                        admin_passwd, auth_version="3")
+        except:
+            self.logger.error("There was an error getting a token from keystone")
+            raise Exception()
 
 
 class CacheObjectDescriptor(object):
@@ -304,7 +335,7 @@ class DataIter(object):
         if self.closed:
             raise ValueError('I/O operation on closed file')
 
-    def read(self, size=CHUNK_SIZE):
+    def read(self, size=64 * 1024):
         self._close_check()
         return self.next(size)
 
@@ -365,13 +396,15 @@ class DataIter(object):
         self.close()
 
 
-
-class FdIter(DataIter):
+class FpIter(object):
     def __init__(self, obj_data, timeout):
         self.closed = False
         self.obj_data = obj_data
         self.timeout = timeout
         self.buf = b''
+
+    def __iter__(self):
+        return self
 
     def read_with_timeout(self, size):
         try:
@@ -385,7 +418,7 @@ class FdIter(DataIter):
             raise
         return chunk
 
-    def next(self, size=CHUNK_SIZE):
+    def next(self, size=64 * 1024):
         if len(self.buf) < size:
             r, _, _ = select.select([self.obj_data], [], [], self.timeout)
             if len(r) == 0:
@@ -407,8 +440,62 @@ class FdIter(DataIter):
             self.buf = b''
         return data
 
+    def _close_check(self):
+        if self.closed:
+            raise ValueError('I/O operation on closed file')
+
+    def read(self, size=CHUNK_SIZE):
+        self._close_check()
+        return self.next(size)
+
+    def readline(self, size=-1):
+        self._close_check()
+
+        # read data into self.buf if there is not enough data
+        while b'\n' not in self.buf and \
+              (size < 0 or len(self.buf) < size):
+            if size < 0:
+                chunk = self.read()
+            else:
+                chunk = self.read(size - len(self.buf))
+            if not chunk:
+                break
+            self.buf += chunk
+
+        # Retrieve one line from buf
+        data, sep, rest = self.buf.partition(b'\n')
+        data += sep
+        self.buf = rest
+
+        # cut out size from retrieved line
+        if size >= 0 and len(data) > size:
+            self.buf = data[size:] + self.buf
+            data = data[:size]
+
+        return data
+
+    def readlines(self, sizehint=-1):
+        self._close_check()
+        lines = []
+        try:
+            while True:
+                line = self.readline(sizehint)
+                if not line:
+                    break
+                lines.append(line)
+                if sizehint >= 0:
+                    sizehint -= len(line)
+                    if sizehint <= 0:
+                        break
+        except StopIteration:
+            pass
+        return lines
+
     def close(self):
         if self.closed:
             return
         os.close(self.obj_data)
         self.closed = True
+
+    def __del__(self):
+        self.close()
