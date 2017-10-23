@@ -77,26 +77,23 @@ class CacheControl(object):
 
     @wsgify
     def __call__(self, req):
-        if req.method in ('PUT', 'GET'):
-            object_path = req.environ['PATH_INFO']
-            object_id = (hashlib.md5(object_path).hexdigest())
-            if req.method == 'GET':
-                if self.cache.is_object_in_cache(object_id):
-                    self.logger.info('Cache Filter - Object '+object_path+' in cache')
-                    return self.get_cahced_object(req, object_id)
-                else:
-                    resp = req.get_response(self.app)
+        object_path = req.environ['PATH_INFO']
+        object_id = (hashlib.md5(object_path).hexdigest())
+        if req.method == 'GET':
+            if self.cache.is_object_in_cache(object_id):
+                self.logger.info('Cache Filter - Object '+object_path+' in cache')
+                return self.get_cahced_object(req, object_id)
 
-                if resp.is_success:
-                    data_iter = resp.app_iter
-                    resp.app_iter = self._put_object_in_cache(resp, object_id, data_iter)
+            resp = req.get_response(self.app)
+            if resp.is_success:
+                data_iter = resp.app_iter
+                resp.app_iter = self._put_object_in_cache(resp, object_id, data_iter)
+            return resp
 
-                return resp
-
-            elif req.method == 'PUT':
-                reader = req.environ['wsgi.input'].read
-                data_iter = iter(lambda: reader(65536), '')
-                req.environ['wsgi.input'] = self._put_object_in_cache(req, object_id, data_iter)
+        elif req.method == 'PUT':
+            reader = req.environ['wsgi.input'].read
+            data_iter = iter(lambda: reader(65536), '')
+            req.environ['wsgi.input'] = self._put_object_in_cache(req, object_id, data_iter)
 
         return req.get_response(self.app)
 
