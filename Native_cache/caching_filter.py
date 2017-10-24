@@ -36,7 +36,7 @@ class Singleton(type):
 # 1. pre-get: to check if the file is in the cache
 # 2. post-get: to store an existing file in the cache
 # 3. pre-put: to store a new file in the cache
-class CacheControl(object):
+class CacheControlFilter(object):
 
     __metaclass__ = Singleton
 
@@ -450,5 +450,5 @@ def filter_factory(global_conf, **local_conf):
     conf.update(local_conf)
 
     def cache_control_filter(app):
-        return CacheControl(app, conf)
+        return CacheControlFilter(app, conf)
     return cache_control_filter
