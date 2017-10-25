@@ -82,7 +82,7 @@ class CacheControlFilter(object):
         if req.method == 'GET':
             if self.cache.is_object_in_cache(object_id):
                 self.logger.info('Cache Filter - Object '+object_path+' in cache')
-                return self.get_cahced_object(req, object_id)
+                return self.get_cached_object(req, object_id)
 
             resp = req.get_response(self.app)
             if resp.is_success:
@@ -97,7 +97,7 @@ class CacheControlFilter(object):
 
         return req.get_response(self.app)
 
-    def _get_cahced_object(self, req, object_id):
+    def _get_cached_object(self, req, object_id):
         object_id, object_size, object_etag, object_storage_policy_id = self.cache.access_cache("GET", object_id)
 
         if object_id:
@@ -197,7 +197,7 @@ class BlockCache(object):
         self.semaphore = Semaphore()
 
     @property
-    def is_objectin_cache(self, block_id):
+    def is_object_in_cache(self, block_id):
         return block_id in self.descriptors_dict
 
     def access_cache(self, operation='PUT', block_id=None, block_data=None, etag=None, storage_policy_id=None):
