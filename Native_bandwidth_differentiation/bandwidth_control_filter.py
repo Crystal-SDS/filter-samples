@@ -1,15 +1,16 @@
-from crystal_filter_middleware.filters.abstract_filter import AbstractFilter
 from threading import Thread
 from eventlet import Timeout
 from swift.common.request_helpers import SegmentedIterable
-import eventlet
+from swift.common.utils import get_logger
+from swift.common.swob import wsgify
+from swift.common.utils import register_swift_info
+from threading import Lock
 import select
 import Queue
 import time
 import pika
 import os
 import redis
-import threading
 import socket
 
 
@@ -23,7 +24,9 @@ BW_MAX = 100
 
 class Singleton(type):
     _instances = {}
-    __lock = threading.Lock()
+
+    # To have a thread-safe Singleton
+    __lock = Lock()
 
     def __call__(cls, *args, **kwargs):  # @NoSelf
         if cls not in cls._instances:
@@ -33,15 +36,21 @@ class Singleton(type):
         return cls._instances[cls]
 
 
-class BandwidthControl(AbstractFilter):
+class BandwidthControlFilter(object):
+
     __metaclass__ = Singleton
 
-    def __init__(self, global_conf, filter_conf, logger):
-        super(BandwidthControl, self).__init__(global_conf, filter_conf, logger)
-        self.server = self.global_conf.get('execution_server')
-        redis_host = self.global_conf['redis_host']
-        redis_port = int(self.global_conf['redis_port'])
-        redis_db = self.global_conf['redis_db']
+    def __init__(self, app, conf):
+        self.app = app
+        self.conf = conf
+        self.logger = get_logger(self.conf, log_route='bandwidth_control_filter')
+        self.filter_data = self.conf['filter_data']
+        self.parameters = self.filter_data['params']
+        self.register_info()
+        self.server = self.conf.get('execution_server')
+        redis_host = self.conf['redis_host']
+        redis_port = int(self.conf['redis_port'])
+        redis_db = self.conf['redis_db']
 
         self.redis = redis.StrictRedis(redis_host, redis_port, redis_db)
 
@@ -50,17 +59,29 @@ class BandwidthControl(AbstractFilter):
 
         self._start_assignments_consumer()
 
-    def _apply_filter(self, req_resp, data_iter, parameters):
-        """
-        Entry Method
-        """
-        method = req_resp.environ['REQUEST_METHOD']
+    def register_info(self):
+        register_swift_info('bandwidth_control_filter')
 
-        if method == 'GET':
-            return self._get_object(req_resp, data_iter)
+    @wsgify
+    def __call__(self, req):
+        if req.method == 'GET':
+            response = req.get_response(self.app)
 
-        elif method == 'PUT':
-            return self._put_object(req_resp, data_iter)
+            if response.is_success:
+                data_iter = response.app_iter
+                response.app_iter = self._get_object(response, data_iter)
+
+            return response
+
+        elif req.method == 'PUT':
+            reader = req.environ['wsgi.input'].read
+            data_iter = iter(lambda: reader(65536), '')
+            req.environ['wsgi.input'] = self._put_object(req, data_iter)
+
+            return req.get_response(self.app)
+
+        else:
+            return req.get_response(self.app)
 
     def _get_project_id(self, req_resp):
         """
@@ -113,7 +134,7 @@ class BandwidthControl(AbstractFilter):
             thr.start()
 
         thr.add_stream(write_pipe, read_pipe)
-        self.logger.info("Bandwidth Differentiation - Added PU stream to control thread: "+thd_id)
+        self.logger.info("Bandwidth Differentiation - Added PUT stream to control thread: "+thd_id)
         return DataFdIter(r, 10)
 
     def _get_object(self, response, data_iter):
@@ -195,6 +216,15 @@ class BandwidthControl(AbstractFilter):
                 self.put_bw_control[thread_key].update_bw_limit(float(bw))
             except KeyError:
                 pass
+
+
+def filter_factory(global_conf, **local_conf):
+    conf = global_conf.copy()
+    conf.update(local_conf)
+
+    def bandwidth_control_filter(app):
+        return BandwidthControlFilter(app, conf)
+    return bandwidth_control_filter
 
 
 class BandwidthThreadControl(Thread):
