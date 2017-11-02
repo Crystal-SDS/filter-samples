@@ -21,8 +21,8 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
-import com.ibm.storlet.common.StorletException;
-import com.ibm.storlet.common.StorletLogger;
+import org.openstack.storlet.common.StorletException;
+import org.openstack.storlet.common.StorletLogger;
 
 /**
  * @author moatti

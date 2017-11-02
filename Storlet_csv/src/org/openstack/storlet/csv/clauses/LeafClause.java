@@ -20,7 +20,7 @@ package org.openstack.storlet.csv.clauses;
 import java.util.Arrays;
 
 import org.openstack.storlet.csv.Utils;
-import com.ibm.storlet.common.StorletLogger;
+import org.openstack.storlet.common.StorletLogger;
 
 /**
  * @author moatti
