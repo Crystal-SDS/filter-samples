@@ -21,7 +21,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.Map;
 
-import com.ibm.storlet.common.StorletLogger;
+import org.openstack.storlet.common.StorletLogger;
 
 /**
  * @author moatti
