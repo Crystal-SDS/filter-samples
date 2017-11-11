@@ -25,6 +25,12 @@ class TaggingFilter(object):
     @wsgify
     def __call__(self, req):
         if req.method == 'PUT':
+            try:
+                # This filter is applied only to the objects
+                _, _, _, obj = req.split_path(4, 4, rest_with_last=True)
+            except:
+                return req.get_response(self.app)
+
             regex = None
             tag = None
 
@@ -34,7 +40,6 @@ class TaggingFilter(object):
                 tag = self.parameters['tag']
 
             if regex and tag:
-                _, _, _, obj = req.split_path(4, 4, rest_with_last=True)
                 pattern = re.compile(regex)
                 if pattern.search(obj):
                     key, value = tag.split(':')
