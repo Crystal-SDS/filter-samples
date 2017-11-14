@@ -10,6 +10,7 @@ from swift.common.wsgi import make_subrequest
 import os
 
 DEFAULT_MAX_TIME = 86400 * 30
+RECYCLE_BIN_CONTAINER = '.recycle_bin'
 
 
 class RecycleBinFilter(object):
@@ -32,16 +33,20 @@ class RecycleBinFilter(object):
     @wsgify
     def __call__(self, req):
         if req.method == 'DELETE':
-            self._parse_vaco(req)
-            if self.obj and not self.container.startswith('.bin_'):
+            try:
+                self._parse_vaco(req)
+            except:
+                # No object request
+                return req.get_response(self.app)
+
+            if self.obj and self.container != RECYCLE_BIN_CONTAINER:
                 new_env = req.environ.copy()
-                recyclebin_container = '.bin_'+self.container
                 auth_token = req.headers.get('X-Auth-Token')
-                new_container = os.path.join('/', self.api, self.account, recyclebin_container)
-                new_path = os.path.join(recyclebin_container, self.obj)
+                new_container = os.path.join('/', self.api, self.account, RECYCLE_BIN_CONTAINER)
+                new_path = os.path.join(RECYCLE_BIN_CONTAINER, self.container, self.obj)
 
                 sub_req = make_subrequest(new_env, 'PUT', new_container,
-                                          headers={'X-Auth-Token': auth_token},
+                                          # headers={'X-Auth-Token': auth_token},
                                           swift_source='recyclebin_filter')
                 resp = sub_req.get_response(self.app)
 

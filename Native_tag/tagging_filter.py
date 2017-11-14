@@ -44,8 +44,11 @@ class TaggingFilter(object):
                 if pattern.search(obj):
                     key, value = tag.split(':')
                     self.logger.info('Tagging Filter - Adding '+tag+' tag to the object')
-                    req.headers['X-Object-Meta-'+key] = value
                     req.headers['X-Object-Sysmeta-'+key] = value
+            elif tag:
+                self.logger.info('Tagging Filter - Adding '+tag+' tag to the object')
+                key, value = tag.split(':')
+                req.headers['X-Object-Sysmeta-'+key] = value
             else:
                 self.logger.error('Tagging Filter - No regex or tag provided')
             return req.get_response(self.app)
